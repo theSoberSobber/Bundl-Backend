@@ -1,0 +1,54 @@
+Bundl-Backend Specs
+Hello there! We are writing bundl-backend, which is the backend for an app called bundl.
+The Bundl app allows users to create orders that need to reach a threshold price, which people can pledge and make reach. This is to help reach free delivery or offers on various apps.
+First of all before diving into the code, a new nest js project called bundl-backend is provided to you in this directory. Please make sure you read it and get a feel for it. We have nest cli installed on this system please nest cli to generate anything you want and do not generate things by hand out of the blue, I would like if the nest-cli.json file was just modified by the nest cli and not us. This is the ideal case.
+One more old project of mine called orvio-backend is provided which will be deleted soon, read it to get a feel for how I do things. For example how i structure my projects and how i use dtos and swagger.
+You will be required to use redis and postgres for this project. Both of which I recommend you start the alpine images in the background and connect from the nest js app using localhost and port forwarding. You are not required to dockerize the whole project or the nest backend just yet. Please refrain from doing that.
+
+The backend's description:
+1) There is a user entity that just has a phoneNumber and fcmToken (this is optional field) and credits that are default 5. We ofc know there will be a userId so primary generated uuid coloumn yeah?
+2) There will be an order entity that will have, orderId as usual generated uuid one, it will also have, Status of order (ACTIVE, EXPIRED, COMPLETED), who created the order (userId), amount needed (number), user to pledge map (userId to pledge amount map), a pledge is just a number, no need to create a seperate entity for it, it's just userId vs pledge numbers, totalPledge (which is just the sum of all pledges in that map), totalUsers involved. This will all be handled by the app we do not need db to infer, just have fields on the entity. One more thing we need is platform of order, i.e. zomato, swiggy, zepto etc. just make it a string, not an enum. Last but not least the most important thing we need is Lat, Long of order. 
+3) Try to use migrations for the database instead of sync true, typeorm + postgres, getting this much up with migrations is your first taks, just postgres, entities and migrations working.
+
+I will keep going to describe more context to you but first implement that much.
+Now we will make a monolith, no microservices, instead make a service folder and put services in it, for example events.service.ts etc. so that if we ever scale we will change them to microservices with a message broker but for now we are a lean monolith directly calling functions instead of using events or messagebrokers.
+
+now we will first work on the auth module. so for all the /auth endpoints make a auth controller and use the auth service for them.
+for now in the auth controller and service let's just make dummy endpoints, no check nothing, just /createNewUser with a posted phoneNumber to create a new user or say it alreayd exists and return a JWT token with phoneNumber after that, in my apps I always like to return a everLasting JWT token called refreshToken and a short expiry token called accessToken. Then make an endpoint called /auth/refresh to refresh the tokens. For your refrence and ease of implementation, an implementation from my previous project Orvio's Orvio-Backend is provided, This will be deleted once you understand things. Just read the relavant auth service and auth controller. Simialr to Orvio we also need a credit system, so that helps you too.
+
+Now we move to the orders module:
+This module is the most important module and contains all the business logic.
+In this module we will have endpoints like:
+
+all endpoints below use authGuard for user to be logged in, infact some of them need userId from the fcmToken as you would have observed from orvio-backend
+/orders/createOrder -> create a new Order with an EX of 10 mins (default or specified in the request)
+-> checks if user has enough credits and uses 1 credit, all the credit handling is similar to orvio, please read from there we do need simialr transaciton locking like orvio was doing for this app
+-> requires whatever order entity described and creates a new order
+-> adds to geoRedis with lat and long yeah the order as key order:{order_uuid} and value as the serialized order object
+-> we need keyspace events on all order:{order_uuid} keys to be able to recieve events on expiry of the key, handling expiry is easy, once you get an expiry event
+              -> just refufnd the credit used (again using transactions, check orvio) and pump that you got one to the event service with ALL the relevant info, the event service will handle it
+/orders/pledgeToOrder -> Pledge to an Order
+-> pledges to order, uses 1 credit, similar check to createOrder, if you think about it, createOrder is just createEmptyOrder + a Pledge lol
+-> but there is a caveat here, to prevent race conditions we must use lua scripts to create an atomic operation of pledging
+-> the pleding operation involves, read order object, deserialize, check if amountRequired <= totalPledge, if yes do not allow this pledge (and hence send an event to event service), otherwise do and update all the relevant info in this lua script only, for example the map and totalPledge, hence we made a checkAndUpdate using lua scripts. Please check orvio service.service.ts for more examples of lua scripts.
+-> once you have successfully pledged and it is a successful pledge, pipe an event to the event service with ALL the relevant info
+-> if after pledging totalPledge >= amountRequired, we need to remove this order from redis since it is completed and pipe an event to the event service with ALL the relevant info
+/orders/activeOrders -> Poll a list of active Orders
+-> accepts a lat and a long and then uses geospatial redis to query in some hardcoded radius all the active orders and return them. Note that we do not need lua for this one since it does not matter if we serve a bit staler list. We are trading off accuracy here for perf.
+/orderes/orderStatus -> Poll information about an order
+protected by one more auth check  that checks if the userId requesting info is one of the pledgers in that order, otherwise reject them
+Returns the order status, basically the complete order Entity serialized. 
+Holds back on returning the pledgers list until order is completed, if the order is completed returns the list of pledgers too.
+
+I want to make clear that when I say event service, it is not a seperate service but a module or just a file in service folder, we are commited to making a monolith. See orvio's structure for more.
+Event Service Event Handling:
+Event service uses another module called fcm module (again you can refer orvio it just sends notifications to devices, it does a lot more in orvio, we just need push notifs), it's more of a util here than a module but yeah whatever,
+Okay so we got events on
+-> a new successful pledge -> send push notifs to all other pledgers (event service gets all data from the event only, remember we piped all relevant info always?)
+-> pledge failed for someone? let them know!
+-> pledged succefully? let them know!
+-> order completed? let everyone know!
+-> order expired? let everyone know!
+
+Keep in mind some might not have fcmToken so you can just skip them.
+You ready to write this backend partner?
