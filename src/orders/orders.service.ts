@@ -138,10 +138,16 @@ export class OrdersService {
     // If not in Redis, get from database
     if (!order) {
       order = await this.orderRepository.findOne({ where: { id: orderId } });
-    }
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
+      
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
+      
+      // Don't re-add completed orders to Redis
+      if (order.status !== OrderStatus.COMPLETED) {
+        // Re-add to Redis with original expiry
+        await this.redisService.storeOrder(order);
+      }
     }
 
     // Check if user is a pledger in this order
@@ -183,8 +189,22 @@ export class OrdersService {
     order.status = OrderStatus.EXPIRED;
     await this.orderRepository.save(order);
 
+    // Remove from Redis
+    await this.redisService.deleteOrder(orderId);
+
     // Refund credit to creator
     await this.creditsService.addCredits(order.creatorId, 1);
+    
+    // Refund credits to all other pledgers
+    const pledgerIds = Object.keys(order.pledgeMap).filter(id => id !== order.creatorId);
+    for (const pledgerId of pledgerIds) {
+      try {
+        await this.creditsService.addCredits(pledgerId, 1);
+        console.log(`Refunded 1 credit to pledger ${pledgerId} for expired order ${orderId}`);
+      } catch (error) {
+        console.error(`Failed to refund credit to pledger ${pledgerId}: ${error.message}`);
+      }
+    }
 
     // Send expired event notification
     await this.eventsService.handleOrderExpired(order);

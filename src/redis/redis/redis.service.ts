@@ -153,9 +153,10 @@ export class RedisService implements OnModuleInit {
       local updatedOrder = cjson.encode(order)
       redis.call('SET', key, updatedOrder)
       
-      -- If completed, remove from geo index
+      -- If completed, remove from geo index and delete the order
       if order.status == 'COMPLETED' then
         redis.call('ZREM', 'orders:geo', key)
+        redis.call('DEL', key)
       end
       
       return {true, 'Pledge successful', updatedOrder}

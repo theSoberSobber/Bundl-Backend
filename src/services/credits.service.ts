@@ -11,6 +11,11 @@ export class CreditsService {
     private readonly dataSource: DataSource,
   ) {}
 
+  // Find user by ID
+  async findUserById(userId: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { id: userId } });
+  }
+
   // Get user credits
   async getCredits(userId: string): Promise<number> {
     const user = await this.userRepository.findOne({ where: { id: userId } });

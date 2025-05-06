@@ -1,29 +1,50 @@
 version: '3.8'
 
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - bundl-network
+    restart: unless-stopped
+
   postgres:
-    image: postgres:14-alpine
-    container_name: bundl-postgres
+    image: postgres:15-alpine
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: bundl
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=bundl_db
     volumes:
-      - bundl-postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bundl-network
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: bundl-redis
     ports:
       - "6379:6379"
-    command: redis-server --notify-keyspace-events Ex
+    command: redis-server --appendonly yes --notify-keyspace-events Ex
     volumes:
-      - bundl-redis-data:/data
+      - redis_data:/data
+    networks:
+      - bundl-network
     restart: unless-stopped
 
+networks:
+  bundl-network:
+    driver: bridge
+
 volumes:
-  bundl-postgres-data:
-  bundl-redis-data: 
+  postgres_data:
+  redis_data: 

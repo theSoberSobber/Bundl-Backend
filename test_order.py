@@ -21,8 +21,8 @@ class Colors:
     BOLD = '\033[1m'
 
 # Test phone numbers (only needed for display, not actually used in debug mode)
-TEST_PHONE_1 = '+919876543210'  # User who creates the order
-TEST_PHONE_2 = '+919876543211'  # User who pledges to the order
+TEST_PHONE_1 = '+919876543212'  # User who creates the order
+TEST_PHONE_2 = '+919876543213'  # User who pledges to the order
 
 def print_response(response, label):
     """Print formatted API response"""

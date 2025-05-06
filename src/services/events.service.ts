@@ -91,10 +91,14 @@ export class EventsService {
         await this.sendPushNotification(
           user.fcmToken,
           'Order Expired',
-          `An order you pledged to has expired.`,
+          `An order you pledged to has expired. Your credit has been refunded.`,
           {
             orderId: order.id,
             eventType: 'order_expired',
+            platform: order.platform,
+            amountNeeded: order.amountNeeded.toString(),
+            yourPledge: (order.pledgeMap[user.id] || 0).toString(),
+            creditRefunded: 'true'
           }
         );
       }
