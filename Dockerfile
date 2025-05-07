@@ -30,7 +30,7 @@ RUN npm install --legacy-peer-deps --only=production
 COPY --from=builder /app/dist ./dist
 
 # Expose port
-EXPOSE 3001
+EXPOSE 3002
 
 # Start the application
 CMD ["npm", "run", "start:prod"] 
