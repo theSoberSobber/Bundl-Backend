@@ -5,7 +5,7 @@ import json
 import uuid
 
 # API Base URL
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://localhost:3001"
 
 # Default test phone number (this won't receive actual messages since we're in debug mode)
 TEST_PHONE = "+919876543210"

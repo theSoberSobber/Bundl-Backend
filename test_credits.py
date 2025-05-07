@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # API Base URL - change this to match your server
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://localhost:3001"
 
 # Get Cashfree secret from environment
 CASHFREE_CLIENT_SECRET = os.getenv('CASHFREE_CLIENT_SECRET', 'test-secret-key')

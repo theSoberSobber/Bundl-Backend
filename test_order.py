@@ -8,7 +8,7 @@ import uuid
 import sys
 
 # API Base URL
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://localhost:3001"
 
 # Colors for terminal output
 class Colors:
