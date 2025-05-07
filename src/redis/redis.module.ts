@@ -11,9 +11,9 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'single',
-        url: `redis://${configService.get('REDIS_HOST', 'localhost')}:${configService.get('REDIS_PORT', 6379)}`,
+        url: `redis://${configService.get('REDIS_HOST')}:${configService.get('REDIS_PORT')}`,
         options: {
-          keyPrefix: configService.get('REDIS_PREFIX', 'bundl:'),
+          keyPrefix: configService.get('REDIS_PREFIX'),
           enableAutoPipelining: true,
           commandTimeout: 5000,
           db: 0,

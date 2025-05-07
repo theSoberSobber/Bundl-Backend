@@ -1,5 +1,5 @@
 # Build stage
-FROM node:alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy source code
 COPY . .
@@ -16,23 +16,20 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:alpine
+FROM node:18-alpine AS production
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies needed for Swagger)
+RUN npm install --legacy-peer-deps --only=production
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy necessary files
-COPY .env.example .env
-
-# Expose the port the app runs on
+# Expose port
 EXPOSE 3000
 
 # Start the application

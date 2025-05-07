@@ -8,11 +8,6 @@ yarn-error.log
 .git
 .gitignore
 
-# Environment
-.env
-.env.*
-!.env.example
-
 # IDE
 .idea
 .vscode

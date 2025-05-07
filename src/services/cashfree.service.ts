@@ -30,8 +30,8 @@ export class CashfreeService {
   };
   
   private readonly baseUrl: string;
-  private readonly clientId: string;
-  private readonly clientSecret: string;
+  private readonly clientId: string | undefined;
+  private readonly clientSecret: string | undefined;
   private readonly environment: string;
 
   constructor(
@@ -40,8 +40,8 @@ export class CashfreeService {
     @InjectEntityManager() private readonly entityManager: EntityManager,
   ) {
     // Initialize Cashfree
-    this.clientId = this.configService.get<string>('CASHFREE_CLIENT_ID', '');
-    this.clientSecret = this.configService.get<string>('CASHFREE_CLIENT_SECRET', '');
+    this.clientId = this.configService.get<string>('CASHFREE_CLIENT_ID'); 
+    this.clientSecret = this.configService.get<string>('CASHFREE_CLIENT_SECRET');
     this.environment = this.configService.get<string>('CASHFREE_ENVIRONMENT') === 'production' 
       ? 'PRODUCTION' 
       : 'SANDBOX';
@@ -289,7 +289,7 @@ export class CashfreeService {
       const data = JSON.stringify(payload);
       const signatureData = data + this.clientSecret + timestamp;
       const computedSignature = crypto
-        .createHmac('sha256', this.clientSecret)
+        .createHmac('sha256', this.clientSecret as string)
         .update(signatureData)
         .digest('base64');
       

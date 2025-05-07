@@ -33,7 +33,7 @@ export class OrvioService {
     }
 
     try {
-      const orgName = this.configService.get<string>('ORVIO_ORG_NAME', 'Bundl');
+      const orgName = this.configService.get<string>('ORVIO_ORG_NAME');
       
       const result = await this.client.create(phoneNumber, {
         orgName,
