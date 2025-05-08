@@ -286,14 +286,30 @@ export class CashfreeService {
     timestamp: string
   ): boolean {
     try {
+      // Get the raw payload as a string without prettifying or changing decimal formats
+      // This preserves the exact format of numbers like 170.00 vs 170
       const data = JSON.stringify(payload);
+      
+      // Create the signature data: payload + clientSecret + timestamp
       const signatureData = data + this.clientSecret + timestamp;
+      
+      this.logger.debug(`Verifying webhook signature with timestamp: ${timestamp}`);
+      
+      // Calculate the signature
       const computedSignature = crypto
         .createHmac('sha256', this.clientSecret as string)
         .update(signatureData)
         .digest('base64');
       
-      return computedSignature === signature;
+      const isValid = computedSignature === signature;
+      
+      if (!isValid) {
+        this.logger.warn(`Webhook signature verification failed`);
+        this.logger.debug(`Expected: ${signature}`);
+        this.logger.debug(`Computed: ${computedSignature}`);
+      }
+      
+      return isValid;
     } catch (error) {
       this.logger.error(`Error verifying webhook signature: ${error.message}`, error.stack);
       return false;

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # API Base URL - change this to match your server
-BASE_URL = "http://localhost:3002"
+BASE_URL = "https://backend-bundl.1110777.xyz"
 
 # Get Cashfree secret from environment
 CASHFREE_CLIENT_SECRET = os.getenv('CASHFREE_CLIENT_SECRET', 'test-secret-key')
@@ -154,17 +154,42 @@ def test_webhook_notification(order_id):
     """Test webhook notification handling"""
     print(f"\n{Colors.BOLD}Testing /credits/webhook endpoint{Colors.ENDC}")
 
-    # Create webhook payload
-    timestamp = str(int(time.time()))
+    # Create webhook payload that matches Cashfree's format
+    timestamp = str(int(time.time() * 1000))  # Cashfree uses milliseconds timestamp
     payload = {
         "data": {
             "order": {
-                "order_id": order_id
+                "order_id": order_id,
+                "order_amount": 10.00,
+                "order_currency": "INR",
+                "order_tags": None
             },
             "payment": {
-                "payment_status": "SUCCESS"
+                "cf_payment_id": "test_" + str(int(time.time())),
+                "payment_status": "SUCCESS",
+                "payment_amount": 10.00,
+                "payment_currency": "INR",
+                "payment_message": "00::Transaction success",
+                "payment_time": time.strftime("%Y-%m-%dT%H:%M:%S+05:30"),
+                "bank_reference": str(int(time.time())),
+                "auth_id": None,
+                "payment_method": {
+                    "upi": {
+                        "channel": "collect",
+                        "upi_id": "test@upi"
+                    }
+                },
+                "payment_group": "upi"
+            },
+            "customer_details": {
+                "customer_name": None,
+                "customer_id": "test_customer",
+                "customer_email": "test@example.com",
+                "customer_phone": "9999999999"
             }
-        }
+        },
+        "event_time": time.strftime("%Y-%m-%dT%H:%M:%S+05:30"),
+        "type": "PAYMENT_SUCCESS_WEBHOOK"
     }
 
     # Calculate signature
@@ -184,6 +209,7 @@ def test_webhook_notification(order_id):
         headers={
             "x-webhook-timestamp": timestamp,
             "x-webhook-signature": signature,
+            "x-webhook-version": "2023-08-01",
             "Content-Type": "application/json"
         },
         json=payload

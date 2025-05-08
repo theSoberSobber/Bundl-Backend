@@ -17,10 +17,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateCreditOrderDto, VerifyPaymentDto, CreditPackage } from './dto/credits.dto';
 import { CashfreeService } from '../services/cashfree.service';
 import { CreditsService } from '../services/credits.service';
+import { Logger } from '@nestjs/common';
 
 @ApiTags('Credits')
 @Controller('credits')
 export class CreditsController {
+  private readonly logger = new Logger(CreditsController.name);
+
   constructor(
     private readonly cashfreeService: CashfreeService,
     private readonly creditsService: CreditsService,
@@ -88,8 +91,11 @@ export class CreditsController {
   async handleWebhook(
     @Body() payload: any,
     @Headers('x-webhook-timestamp') timestamp: string,
-    @Headers('x-webhook-signature') signature: string
+    @Headers('x-webhook-signature') signature: string,
+    @Headers('x-webhook-version') version: string
   ) {
+    this.logger.log(`Received webhook: ${payload.type}, Version: ${version}`);
+    
     // Verify webhook signature
     const isValid = this.cashfreeService.verifyWebhookSignature(
       payload,
@@ -98,20 +104,42 @@ export class CreditsController {
     );
     
     if (!isValid) {
+      this.logger.error('Invalid webhook signature received');
       throw new BadRequestException('Invalid webhook signature');
     }
     
-    // Process payment notification atomically
-    if (payload.data?.payment?.payment_status === 'SUCCESS') {
-      const orderId = payload.data.order.order_id;
-      const processed = await this.cashfreeService.processPaymentAtomically(orderId);
-      
-      return { 
-        success: true, 
-        message: processed ? 'Payment processed successfully' : 'Payment already processed'
-      };
+    const webhookType = payload.type;
+    const orderId = payload.data?.order?.order_id;
+    const paymentStatus = payload.data?.payment?.payment_status;
+    
+    this.logger.log(`Processing webhook type: ${webhookType}, Order ID: ${orderId}, Payment Status: ${paymentStatus}`);
+    
+    // Handle different webhook types
+    switch (webhookType) {
+      case 'PAYMENT_SUCCESS_WEBHOOK':
+        if (paymentStatus === 'SUCCESS') {
+          const processed = await this.cashfreeService.processPaymentAtomically(orderId);
+          return { 
+            success: true, 
+            message: processed ? 'Payment processed successfully' : 'Payment already processed'
+          };
+        }
+        break;
+        
+      case 'PAYMENT_FAILED_WEBHOOK':
+        // Log but don't process failed payments
+        this.logger.warn(`Payment failed for order ${orderId}: ${payload.data?.payment?.payment_message}`);
+        await this.cashfreeService.updateOrderStatus(orderId, 'FAILED');
+        return { success: true, message: 'Failed payment recorded' };
+        
+      case 'PAYMENT_USER_DROPPED_WEBHOOK':
+        // Log but don't process user-dropped payments
+        this.logger.warn(`User dropped payment for order ${orderId}`);
+        await this.cashfreeService.updateOrderStatus(orderId, 'DROPPED');
+        return { success: true, message: 'User dropped payment recorded' };
     }
     
+    // Default response for unhandled or unknown webhook types
     return { success: true, message: 'Webhook received' };
   }
 

@@ -6,7 +6,7 @@ import time
 import sys
 
 # API Base URL - change this to match your server
-BASE_URL = "http://localhost:3002"
+BASE_URL = "https://backend-bundl.1110777.xyz"
 
 # Colors for terminal output
 class Colors:
@@ -40,7 +40,9 @@ def test_send_otp():
     print(f"\n{Colors.BOLD}Testing /auth/sendOtp endpoint{Colors.ENDC}")
 
     # Get phone number from user
-    phone_number = input("Enter your phone number (e.g. +919770483089): ")
+    # phone_number = input("Enter your phone number (e.g. +919770483089): ")
+    phone_number = "+919770483089"
+
 
     # Send OTP
     response = requests.post(
@@ -60,8 +62,8 @@ def test_verify_otp(tid, phone_number):
     print(f"\n{Colors.BOLD}Testing /auth/verifyOtp endpoint{Colors.ENDC}")
 
     # Get OTP from user
-    otp = input(f"Enter the OTP sent to {phone_number}: ")
-
+    # otp = input(f"Enter the OTP sent to {phone_number}: ")
+    otp = "000000"
     # Test FCM token
     fcm_token = "test_fcm_token_" + str(int(time.time()))
 
