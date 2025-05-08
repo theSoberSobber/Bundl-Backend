@@ -7,65 +7,39 @@ services:
       - "3002:3002"
     env_file:
       - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - shared-network
     restart: unless-stopped
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  postgres:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
+  db-init:
+    image: postgres:13-alpine
+    networks:
+      - shared-network
     env_file:
       - .env
-    environment:
-      - POSTGRES_USER=${DB_USERNAME}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=${DB_DATABASE}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - shared-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    command: >
+      bash -c "
+      until PGPASSWORD=$$DB_PASSWORD psql -h $$DB_HOST -U $$DB_USERNAME -d postgres -c 'SELECT 1' > /dev/null 2>&1; do
+        echo 'Waiting for PostgreSQL to become available...';
+        sleep 1;
+      done;
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes --notify-keyspace-events Ex
-    volumes:
-      - redis_data:/data
-    networks:
-      - shared-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      echo 'PostgreSQL is available, checking if database exists...';
 
+      PGPASSWORD=$$DB_PASSWORD psql -h $$DB_HOST -U $$DB_USERNAME -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = '$$DB_DATABASE'\" | grep -q 1 ||
+      PGPASSWORD=$$DB_PASSWORD psql -h $$DB_HOST -U $$DB_USERNAME -d postgres -c \"CREATE DATABASE $$DB_DATABASE\";
+
+      echo 'Database setup completed successfully';
+      "
 networks:
   shared-network:
     external: true
     name: orvio-bundl-network
-
-volumes:
-  postgres_data:
-  redis_data: 
