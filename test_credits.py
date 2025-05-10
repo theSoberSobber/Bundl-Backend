@@ -159,14 +159,14 @@ def test_webhook_notification(base_url, token, order_id, user_id):
         "data": {
             "order": {
                 "order_id": order_id,
-                "order_amount": 45.00,  # Ensure decimal format
+                "order_amount": 5.00,  # ₹5 for 5 credits
                 "order_currency": "INR",
                 "order_tags": None
             },
             "payment": {
                 "cf_payment_id": "5114917869332",
                 "payment_status": "SUCCESS",
-                "payment_amount": 45.00,  # Ensure decimal format
+                "payment_amount": 5.00,  # ₹5 for 5 credits
                 "payment_currency": "INR",
                 "payment_message": "00::Transaction success",
                 "payment_time": "2025-05-10T14:59:42+05:30",
