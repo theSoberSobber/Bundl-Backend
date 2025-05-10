@@ -156,9 +156,10 @@ export class CreditsController {
     return {
       credits,
       pricePerCredit: {
-        '0-5': 100,
-        '5-10': 80,
-        '10+': 60
+        '1-4': 1.2,    // ₹1.2 per credit for 1-4 credits
+        '5-9': 1.0,    // ₹1.0 per credit for 5-9 credits
+        '10-19': 0.8,  // ₹0.8 per credit for 10-19 credits
+        '20+': 0.6     // ₹0.6 per credit for 20+ credits
       },
       totalAmount
     };
