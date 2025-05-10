@@ -102,6 +102,8 @@ export class CreditsController {
       signature,
       timestamp
     );
+
+    this.logger.log(`Webhook Payload ${JSON.stringify(payload, null, 2)}, ${timestamp}, ${signature}`);
     
     if (!isValid) {
       this.logger.error('Invalid webhook signature received');

@@ -246,17 +246,11 @@ export class CashfreeService {
         }
       );
       
+      console.log(response.data);
+
       const { order_status } = response.data;
       
       this.logger.log(`Verifying order ${orderId} - Status: ${order_status}`);
-      
-      if (order_status === 'PAID') {
-        
-        return {
-          success: true,
-          orderStatus: order_status
-        };
-      }
       
       return {
         success: order_status === 'PAID',
