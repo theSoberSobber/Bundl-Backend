@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { EntityManager } from 'typeorm';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import { User } from '../entities/user.entity';
+import { createHmac } from 'crypto';
 
 // Define order details interface
 export interface OrderDetails {
@@ -274,38 +275,39 @@ export class CashfreeService {
   /**
    * Verify Cashfree webhook signature
    */
-  verifyWebhookSignature(
+  async verifyWebhookSignature(
     payload: any,
+    timestamp: string,
     signature: string,
-    timestamp: string
-  ): boolean {
+  ): Promise<boolean> {
     try {
-      // Get the raw payload as a string without prettifying or changing decimal formats
-      // This preserves the exact format of numbers like 170.00 vs 170
-      const data = JSON.stringify(payload);
-      
-      // Create the signature data: payload + clientSecret + timestamp
-      const signatureData = data + this.clientSecret + timestamp;
-      
-      this.logger.debug(`Verifying webhook signature with timestamp: ${timestamp}`);
-      
-      // Calculate the signature
-      const computedSignature = crypto
-        .createHmac('sha256', this.clientSecret as string)
-        .update(signatureData)
-        .digest('base64');
-      
-      const isValid = computedSignature === signature;
-      
-      if (!isValid) {
-        this.logger.warn(`Webhook signature verification failed`);
-        this.logger.debug(`Expected: ${signature}`);
-        this.logger.debug(`Computed: ${computedSignature}`);
+      if (!this.clientSecret) {
+        this.logger.error('Client secret is not configured');
+        return false;
       }
+
+      // Get the raw payload string without any modifications
+      // This preserves the exact format of numbers like 170.00 vs 170
+      const payloadString = JSON.stringify(payload, null, 0);
       
-      return isValid;
+      // Combine payload + timestamp + client secret in the correct order
+      const dataToSign = payloadString + timestamp + this.clientSecret;
+      
+      // Create HMAC SHA256 hash
+      const hmac = createHmac('sha256', this.clientSecret);
+      hmac.update(dataToSign);
+      const computedSignature = hmac.digest('base64');
+
+      // Log for debugging
+      this.logger.debug(`Verifying webhook signature with timestamp: ${timestamp}`);
+      this.logger.debug(`Expected: ${signature}`);
+      this.logger.debug(`Computed: ${computedSignature}`);
+      this.logger.debug(`Payload string: ${payloadString}`);
+      this.logger.debug(`Data to sign: ${dataToSign}`);
+
+      return computedSignature === signature;
     } catch (error) {
-      this.logger.error(`Error verifying webhook signature: ${error.message}`, error.stack);
+      this.logger.error('Error verifying webhook signature:', error);
       return false;
     }
   }

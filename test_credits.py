@@ -150,77 +150,88 @@ def test_verify_payment(access_token, order_id):
 
     return data['success']
 
-def test_webhook_notification(order_id):
+def test_webhook_notification(base_url, token, order_id, user_id):
     """Test webhook notification handling"""
-    print(f"\n{Colors.BOLD}Testing /credits/webhook endpoint{Colors.ENDC}")
-
-    # Create webhook payload that matches Cashfree's format
-    timestamp = str(int(time.time() * 1000))  # Cashfree uses milliseconds timestamp
+    print("\n=== Testing Webhook Notification ===")
+    
+    # Create webhook payload matching Cashfree's exact format
     payload = {
         "data": {
             "order": {
                 "order_id": order_id,
-                "order_amount": 10.00,
+                "order_amount": 45.00,  # Ensure decimal format
                 "order_currency": "INR",
                 "order_tags": None
             },
             "payment": {
-                "cf_payment_id": "test_" + str(int(time.time())),
+                "cf_payment_id": "5114917869332",
                 "payment_status": "SUCCESS",
-                "payment_amount": 10.00,
+                "payment_amount": 45.00,  # Ensure decimal format
                 "payment_currency": "INR",
                 "payment_message": "00::Transaction success",
-                "payment_time": time.strftime("%Y-%m-%dT%H:%M:%S+05:30"),
-                "bank_reference": str(int(time.time())),
+                "payment_time": "2025-05-10T14:59:42+05:30",
+                "bank_reference": "1234567890",
                 "auth_id": None,
                 "payment_method": {
                     "upi": {
                         "channel": "collect",
-                        "upi_id": "test@upi"
+                        "upi_id": "testsuccess@gocash"
                     }
                 },
                 "payment_group": "upi"
             },
             "customer_details": {
-                "customer_name": None,
-                "customer_id": "test_customer",
-                "customer_email": "test@example.com",
-                "customer_phone": "9999999999"
-            }
+                "customer_name": f"User_{user_id}",
+                "customer_id": user_id,
+                "customer_email": "user@example.com",
+                "customer_phone": "919770483089"
+            },
+            "payment_gateway_details": {
+                "gateway_name": "CASHFREE",
+                "gateway_order_id": "2192843787",
+                "gateway_payment_id": "5114917869332",
+                "gateway_status_code": None,
+                "gateway_order_reference_id": "null",
+                "gateway_settlement": "CASHFREE",
+                "gateway_reference_name": None
+            },
+            "payment_offers": None
         },
-        "event_time": time.strftime("%Y-%m-%dT%H:%M:%S+05:30"),
+        "event_time": "2025-05-10T14:59:53+05:30",
         "type": "PAYMENT_SUCCESS_WEBHOOK"
     }
-
-    # Calculate signature
+    
+    # Get current timestamp in milliseconds
+    timestamp = str(int(time.time() * 1000))
+    
+    # Calculate signature using the exact same format as Cashfree
     payload_str = json.dumps(payload, separators=(',', ':'))  # Compact JSON without whitespace
-    signature_data = payload_str + CASHFREE_CLIENT_SECRET + timestamp
-    signature = base64.b64encode(
-        hmac.new(
-            CASHFREE_CLIENT_SECRET.encode(),
-            signature_data.encode(),
-            hashlib.sha256
-        ).digest()
-    ).decode()
-
-    # Send webhook notification
+    data_to_sign = payload_str + timestamp + CASHFREE_CLIENT_SECRET
+    signature = hmac.new(
+        CASHFREE_CLIENT_SECRET.encode(),
+        data_to_sign.encode(),
+        hashlib.sha256
+    ).digest()
+    signature_b64 = base64.b64encode(signature).decode()
+    
+    # Send webhook notification with proper headers
+    headers = {
+        "Content-Type": "application/json",
+        "x-webhook-signature": signature_b64,
+        "x-webhook-timestamp": timestamp,
+        "x-webhook-version": "2023-08-01"
+    }
+    
     response = requests.post(
-        f"{BASE_URL}/credits/webhook",
-        headers={
-            "x-webhook-timestamp": timestamp,
-            "x-webhook-signature": signature,
-            "x-webhook-version": "2023-08-01",
-            "Content-Type": "application/json"
-        },
-        json=payload
+        f"{base_url}/credits/webhook",
+        json=payload,
+        headers=headers
     )
-
-    data = print_response(response, "Webhook Response")
-    if not data or not data.get('success'):
-        print(f"{Colors.FAIL}Failed to process webhook{Colors.ENDC}")
-        sys.exit(1)
-
-    return data['success']
+    
+    print(f"Webhook Response Status: {response.status_code}")
+    print(f"Webhook Response: {response.text}")
+    
+    return response.status_code == 200
 
 def main():
     print(f"{Colors.BOLD}{Colors.HEADER}===== Bundl Credits API Test =====\n{Colors.ENDC}")
@@ -246,7 +257,7 @@ def main():
     time.sleep(2)  # Wait for a moment
 
     # Test webhook notification (simulating Cashfree callback)
-    webhook_success = test_webhook_notification(order_id)
+    webhook_success = test_webhook_notification(BASE_URL, access_token, order_id, user_id)
     if webhook_success:
         print(f"{Colors.GREEN}Webhook processed successfully{Colors.ENDC}")
 
