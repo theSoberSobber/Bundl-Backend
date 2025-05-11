@@ -132,11 +132,12 @@ export class RedisService implements OnModuleInit {
         order.pledgeMap = {}
       end
       
-      -- Check if user already pledged
+      -- Check if user already pledged (to track new users)
       local isNewUser = not order.pledgeMap[userId]
+      local currentPledge = order.pledgeMap[userId] or 0
       
-      -- Update pledge map
-      order.pledgeMap[userId] = pledgeAmount
+      -- Update pledge map - ADD to existing pledge instead of replacing
+      order.pledgeMap[userId] = currentPledge + pledgeAmount
       
       -- Update total pledge and total users
       order.totalPledge = (order.totalPledge or 0) + pledgeAmount

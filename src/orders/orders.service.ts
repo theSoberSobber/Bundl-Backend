@@ -31,6 +31,10 @@ export class OrdersService {
     }
 
     try {
+      // Check if initial pledge is enough to complete the order immediately
+      const isCompleted = createOrderDto.initialPledge && 
+                          createOrderDto.initialPledge >= createOrderDto.amountNeeded;
+                          
       // Create new order
       const order = this.orderRepository.create({
         creatorId: userId,
@@ -41,13 +45,13 @@ export class OrdersService {
         pledgeMap: {},
         totalPledge: 0,
         totalUsers: 0,
-        status: OrderStatus.ACTIVE,
+        status: isCompleted ? OrderStatus.COMPLETED : OrderStatus.ACTIVE,
       });
 
       // Save order to database
       const savedOrder = await this.orderRepository.save(order);
 
-      // If initial pledge was specified, add it
+      // Add initial pledge
       if (createOrderDto.initialPledge && createOrderDto.initialPledge > 0) {
         savedOrder.pledgeMap = { [userId]: createOrderDto.initialPledge };
         savedOrder.totalPledge = createOrderDto.initialPledge;
@@ -57,11 +61,40 @@ export class OrdersService {
         await this.orderRepository.save(savedOrder);
       }
 
-      // Add to Redis with expiry
-      const expirySeconds = createOrderDto.expirySeconds || 600; // Default 10 minutes
-      await this.redisService.storeOrder(savedOrder, expirySeconds);
-
-      return savedOrder;
+      // Only add to Redis if it's not completed
+      if (!isCompleted) {
+        // Add to Redis with expiry
+        const expirySeconds = createOrderDto.expirySeconds || 600; // Default 10 minutes
+        await this.redisService.storeOrder(savedOrder, expirySeconds);
+        return savedOrder;
+      } else {
+        // Send event for completed order
+        await this.eventsService.handleOrderCompleted(savedOrder);
+        
+        // Add phone numbers for completed order
+        const phoneNumberMap = {};
+        const pledgerIds = Object.keys(savedOrder.pledgeMap);
+        
+        // Get all users in a single query
+        const users = await this.userRepository.find({
+          where: { id: In(pledgerIds) }
+        });
+        
+        // Create phoneNumberMap
+        users.forEach(user => {
+          phoneNumberMap[user.phoneNumber] = savedOrder.pledgeMap[user.id];
+        });
+        
+        // Add note for completed order
+        const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+        
+        // Return order with phone numbers and note
+        return {
+          ...savedOrder,
+          phoneNumberMap,
+          note
+        };
+      }
     } catch (error) {
       // Refund credit if order creation fails
       await this.creditsService.addCredits(userId, 1);
@@ -107,9 +140,33 @@ export class OrdersService {
       // Send event for successful pledge
       await this.eventsService.handleSuccessfulPledge(updatedOrder, userId);
 
-      // If order is completed, send completed event
+      // If order is completed, add phoneNumberMap and note
       if (updatedOrder.status === OrderStatus.COMPLETED) {
         await this.eventsService.handleOrderCompleted(updatedOrder);
+        
+        // Add phone numbers for all users
+        const phoneNumberMap = {};
+        const pledgerIds = Object.keys(updatedOrder.pledgeMap);
+        
+        // Get all users in a single query
+        const users = await this.userRepository.find({
+          where: { id: In(pledgerIds) }
+        });
+        
+        // Create phoneNumberMap
+        users.forEach(user => {
+          phoneNumberMap[user.phoneNumber] = updatedOrder.pledgeMap[user.id];
+        });
+        
+        // Add note for completed order
+        const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+        
+        // Return order with phone numbers and note
+        return {
+          ...updatedOrder,
+          phoneNumberMap,
+          note
+        };
       }
 
       return updatedOrder;
