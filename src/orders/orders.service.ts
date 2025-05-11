@@ -75,25 +75,29 @@ export class OrdersService {
         const phoneNumberMap = {};
         const pledgerIds = Object.keys(savedOrder.pledgeMap);
         
-        // Get all users in a single query
-        const users = await this.userRepository.find({
-          where: { id: In(pledgerIds) }
-        });
-        
-        // Create phoneNumberMap
-        users.forEach(user => {
-          phoneNumberMap[user.phoneNumber] = savedOrder.pledgeMap[user.id];
-        });
-        
-        // Add note for completed order
-        const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
-        
-        // Return order with phone numbers and note
-        return {
-          ...savedOrder,
-          phoneNumberMap,
-          note
-        };
+        try {
+          // Get user data
+          const user = await this.userRepository.findOne({ where: { id: userId } });
+          
+          if (user && user.phoneNumber) {
+            // Create phoneNumberMap with the creator's phone number
+            phoneNumberMap[user.phoneNumber] = savedOrder.pledgeMap[userId];
+          }
+          
+          // Add note for completed order
+          const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+          
+          // Return order with phone numbers and note
+          return {
+            ...savedOrder,
+            phoneNumberMap,
+            note
+          };
+        } catch (error) {
+          console.error("Error fetching user data for phoneNumberMap:", error);
+          // Return order without phoneNumberMap if there was an error
+          return savedOrder;
+        }
       }
     } catch (error) {
       // Refund credit if order creation fails
@@ -149,24 +153,32 @@ export class OrdersService {
         const pledgerIds = Object.keys(updatedOrder.pledgeMap);
         
         // Get all users in a single query
-        const users = await this.userRepository.find({
-          where: { id: In(pledgerIds) }
-        });
-        
-        // Create phoneNumberMap
-        users.forEach(user => {
-          phoneNumberMap[user.phoneNumber] = updatedOrder.pledgeMap[user.id];
-        });
-        
-        // Add note for completed order
-        const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
-        
-        // Return order with phone numbers and note
-        return {
-          ...updatedOrder,
-          phoneNumberMap,
-          note
-        };
+        try {
+          const users = await this.userRepository.find({
+            where: { id: In(pledgerIds) }
+          });
+          
+          // Create phoneNumberMap
+          users.forEach(user => {
+            if (user && user.phoneNumber && updatedOrder.pledgeMap[user.id]) {
+              phoneNumberMap[user.phoneNumber] = updatedOrder.pledgeMap[user.id];
+            }
+          });
+          
+          // Add note for completed order
+          const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+          
+          // Return order with phone numbers and note
+          return {
+            ...updatedOrder,
+            phoneNumberMap,
+            note
+          };
+        } catch (error) {
+          console.error("Error fetching user data for phoneNumberMap:", error);
+          // Return order without phoneNumberMap if there was an error
+          return updatedOrder;
+        }
       }
 
       return updatedOrder;
@@ -213,31 +225,39 @@ export class OrdersService {
       throw new NotFoundException('Order not found or you are not a participant');
     }
 
-    // For completed orders, add phone numbers
+    // For completed orders, add phone numbers - REGARDLESS OF PARTICIPANT COUNT
     if (order.status === OrderStatus.COMPLETED) {
       // Add phone numbers for all users
       const phoneNumberMap = {};
       const pledgerIds = Object.keys(order.pledgeMap);
       
-      // Get all users in a single query
-      const users = await this.userRepository.find({
-        where: { id: In(pledgerIds) }
-      });
-      
-      // Create phoneNumberMap
-      users.forEach(user => {
-        phoneNumberMap[user.phoneNumber] = order.pledgeMap[user.id];
-      });
-      
-      // Add note for completed order
-      const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
-      
-      // Return order with phone numbers and note
-      return {
-        ...order,
-        phoneNumberMap,
-        note
-      };
+      try {
+        // Get all users in a single query
+        const users = await this.userRepository.find({
+          where: { id: In(pledgerIds) }
+        });
+        
+        // Create phoneNumberMap
+        users.forEach(user => {
+          if (user && user.phoneNumber && order.pledgeMap[user.id]) {
+            phoneNumberMap[user.phoneNumber] = order.pledgeMap[user.id];
+          }
+        });
+        
+        // Add note for completed order
+        const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+        
+        // Return order with phone numbers and note
+        return {
+          ...order,
+          phoneNumberMap,
+          note
+        };
+      } catch (error) {
+        console.error("Error fetching user data for phoneNumberMap:", error);
+        // Return order without phoneNumberMap if there was an error
+        return order;
+      }
     }
     
     // For expired orders, add a note
