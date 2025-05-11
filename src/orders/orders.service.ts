@@ -8,6 +8,7 @@ import { CreditsService } from '../services/credits.service';
 import { EventsService } from '../services/events.service';
 import { CreateOrderDto, PledgeToOrderDto, GetOrdersNearDto } from './dto/order.dto';
 import { OnEvent } from '@nestjs/event-emitter';
+import { In } from 'typeorm';
 
 @Injectable()
 export class OrdersService {
@@ -155,8 +156,43 @@ export class OrdersService {
       throw new NotFoundException('Order not found or you are not a participant');
     }
 
-    // If order is not completed, hide the pledgers information
-    if (order.status !== OrderStatus.COMPLETED) {
+    // For completed orders, add phone numbers
+    if (order.status === OrderStatus.COMPLETED) {
+      // Add phone numbers for all users
+      const phoneNumberMap = {};
+      const pledgerIds = Object.keys(order.pledgeMap);
+      
+      // Get all users in a single query
+      const users = await this.userRepository.find({
+        where: { id: In(pledgerIds) }
+      });
+      
+      // Create phoneNumberMap
+      users.forEach(user => {
+        phoneNumberMap[user.phoneNumber] = order.pledgeMap[user.id];
+      });
+      
+      // Add note for completed order
+      const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+      
+      // Return order with phone numbers and note
+      return {
+        ...order,
+        phoneNumberMap,
+        note
+      };
+    }
+    
+    // For expired orders, add a note
+    if (order.status === OrderStatus.EXPIRED) {
+      return {
+        ...order,
+        note: "Refunded 1 credit back for expiry"
+      };
+    }
+
+    // If order is still active, hide other pledgers information
+    if (order.status === OrderStatus.ACTIVE) {
       // Create a copy of the order with pledgeMap hidden
       const { pledgeMap, ...orderWithoutPledgeMap } = order;
       return {

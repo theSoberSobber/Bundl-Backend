@@ -32,6 +32,12 @@ export class Order {
   @Column('jsonb')
   pledgeMap: Record<string, number>;
 
+  // Virtual property - not stored in database
+  phoneNumberMap?: Record<string, number>;
+
+  // Virtual property - not stored in database
+  note?: string;
+
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
   totalPledge: number;
 
