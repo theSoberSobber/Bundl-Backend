@@ -1,0 +1,26 @@
+# .github/CD.yml
+#
+# Used by .github/workflows/deploy.yml
+# Do NOT put passwords here — use repo secret: secrets.SSH_PASSWORD
+#
+server_user: pavit                   # remote SSH user (default used by workflow)
+server_host: 100.112.185.9           # remote Tailscale IP / hostname
+deployments_dir: /home/pavit/deployments   # directory on remote where repos live
+
+# If left empty, the workflow will use repository name as the app folder.
+# Example: if repo is github.com/you/my-app and app_folder is blank, app will be cloned to
+# /home/pavit/deployments/my-app
+app_folder: ""                       # optional — folder name under deployments (leave "" to default to repo name)
+
+# Inside the envs repo, this folder's entire contents will be copied into the app root.
+# Leave empty to copy the top-level of the envs repo.
+env_subpath: bundl                    # e.g., "prod", "staging", or "" for repo root
+
+# Filename used by older variants / for explicit reference (not required when copying a directory)
+env_file_name: .env                  # only relevant if you later switch to copying a single file
+
+# Optional: explicitly set the SSH clone URL for the application repo.
+# If empty, workflow attempts to convert local origin -> SSH automatically.
+# Example: git@github.com:your-org/your-app.git
+app_repo_ssh_url: "git@github.com:theSoberSobber/Bundl-Backend.git"                 # optional override
+
