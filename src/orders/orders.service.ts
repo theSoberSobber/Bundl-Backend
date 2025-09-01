@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +11,7 @@ import { User } from '../entities/user.entity';
 import { OrdersRedisService } from './services/orders-redis.service';
 import { CreditsService } from '../credits/credits.service';
 import { EventsService } from '../services/events.service';
+import { GeohashLocationService } from '../services/geohash-location.service';
 import {
   CreateOrderDto,
   PledgeToOrderDto,
@@ -20,6 +22,8 @@ import { APP_CONSTANTS } from '../constants/app.constants';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -28,6 +32,7 @@ export class OrdersService {
     private readonly ordersRedisService: OrdersRedisService,
     private readonly creditsService: CreditsService,
     private readonly eventsService: EventsService,
+    private readonly geohashLocationService: GeohashLocationService,
   ) {}
 
   // Create a new order
@@ -76,6 +81,27 @@ export class OrdersService {
         createOrderDto.expirySeconds ||
         APP_CONSTANTS.DEFAULT_ORDER_EXPIRY_SECONDS;
       await this.ordersRedisService.storeOrder(savedOrder, expirySeconds);
+
+      // Send geohash-based notifications to nearby users
+      try {
+        const notificationResult = await this.geohashLocationService.notifyNearbyUsers(
+          savedOrder.latitude,
+          savedOrder.longitude,
+          savedOrder.id,
+          savedOrder.platform,
+          savedOrder.amountNeeded,
+        );
+        
+        this.logger.log(
+          `Order ${savedOrder.id} notifications: ${notificationResult.successful}/${notificationResult.totalTopics} topics successful`
+        );
+      } catch (error) {
+        // Don't fail order creation if notification fails
+        this.logger.error(
+          `Failed to send notifications for order ${savedOrder.id}:`,
+          error.stack,
+        );
+      }
 
       return savedOrder;
     } catch (error) {
@@ -135,9 +161,54 @@ export class OrdersService {
       // Send event for successful pledge
       await this.eventsService.handleSuccessfulPledge(updatedOrder, userId);
 
+      // Send geohash-based notifications for order updates
+      try {
+        const pledgePercentage = Math.round((updatedOrder.totalPledge / updatedOrder.amountNeeded) * 100);
+        const notificationResult = await this.geohashLocationService.notifyNearbyUsers(
+          updatedOrder.latitude,
+          updatedOrder.longitude,
+          updatedOrder.id,
+          updatedOrder.platform,
+          updatedOrder.amountNeeded,
+          'pledge_update',
+          { pledgePercentage: pledgePercentage.toString() },
+        );
+        
+        this.logger.log(
+          `Order ${updatedOrder.id} pledge update notifications: ${notificationResult.successful}/${notificationResult.totalTopics} topics successful (${pledgePercentage}% complete)`
+        );
+      } catch (error) {
+        // Don't fail pledge if notification fails
+        this.logger.error(
+          `Failed to send pledge update notifications for order ${updatedOrder.id}:`,
+          error.stack,
+        );
+      }
+
       // If order is completed, send completed event
       if (updatedOrder.status === OrderStatus.COMPLETED) {
         await this.eventsService.handleOrderCompleted(updatedOrder);
+        
+        // Send completion notification to nearby users
+        try {
+          const notificationResult = await this.geohashLocationService.notifyNearbyUsers(
+            updatedOrder.latitude,
+            updatedOrder.longitude,
+            updatedOrder.id,
+            updatedOrder.platform,
+            updatedOrder.amountNeeded,
+            'order_completed',
+          );
+          
+          this.logger.log(
+            `Order ${updatedOrder.id} completion notifications: ${notificationResult.successful}/${notificationResult.totalTopics} topics successful`
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send completion notifications for order ${updatedOrder.id}:`,
+            error.stack,
+          );
+        }
       }
 
       return updatedOrder;

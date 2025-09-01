@@ -17,6 +17,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
+import { GeohashLocationService } from '../services/geohash-location.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   CreateOrderDto,
@@ -27,7 +28,10 @@ import {
 @ApiTags('Orders')
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly geohashLocationService: GeohashLocationService,
+  ) {}
 
   @ApiOperation({ summary: 'Create a new order' })
   @ApiResponse({
@@ -73,5 +77,32 @@ export class OrdersController {
   async getOrderStatus(@Req() req, @Param('orderId') orderId: string) {
     const userId = req.user.id;
     return this.ordersService.getOrderStatus(userId, orderId);
+  }
+
+  @ApiOperation({ summary: 'Debug: Get geohashes for a location (dev only)' })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Returns geohashes that would receive notifications for this location' 
+  })
+  @Get('debug/geohashes')
+  async getGeohashesForLocation(
+    @Query('latitude') latitude: number,
+    @Query('longitude') longitude: number,
+    @Query('radiusMeters') radiusMeters: number = 200,
+  ) {
+    const geohashes = this.geohashLocationService.getGeohashesForLocation(
+      latitude,
+      longitude,
+      radiusMeters,
+    );
+    
+    return {
+      latitude,
+      longitude,
+      radiusMeters,
+      totalGeohashes: geohashes.length,
+      geohashes,
+      topics: geohashes.map(hash => `geohash_${hash}`),
+    };
   }
 }
