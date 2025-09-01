@@ -3,11 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { User } from '../entities/user.entity';
-import { RedisService } from '../redis/redis/redis.service';
-import { CreditsService } from '../services/credits.service';
+import { RedisService } from '../redis/redis.service';
+import { CreditsService } from '../credits/credits.service';
 import { EventsService } from '../services/events.service';
 import { CreateOrderDto, PledgeToOrderDto, GetOrdersNearDto } from './dto/order.dto';
 import { OnEvent } from '@nestjs/event-emitter';
+import { APP_CONSTANTS } from '../constants/app.constants';
 
 @Injectable()
 export class OrdersService {
@@ -24,7 +25,7 @@ export class OrdersService {
   // Create a new order
   async createOrder(userId: string, createOrderDto: CreateOrderDto): Promise<Order> {
     // Check if user has enough credits
-    const hasEnoughCredits = await this.creditsService.useCredits(userId, 1);
+    const hasEnoughCredits = await this.creditsService.useCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
     if (!hasEnoughCredits) {
       throw new BadRequestException('Not enough credits');
     }
@@ -57,13 +58,13 @@ export class OrdersService {
       }
 
       // Add to Redis with expiry
-      const expirySeconds = createOrderDto.expirySeconds || 600; // Default 10 minutes
+      const expirySeconds = createOrderDto.expirySeconds || APP_CONSTANTS.DEFAULT_ORDER_EXPIRY_SECONDS;
       await this.redisService.storeOrder(savedOrder, expirySeconds);
 
       return savedOrder;
     } catch (error) {
       // Refund credit if order creation fails
-      await this.creditsService.addCredits(userId, 1);
+      await this.creditsService.addCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
       throw error;
     }
   }
@@ -71,7 +72,7 @@ export class OrdersService {
   // Pledge to an existing order
   async pledgeToOrder(userId: string, pledgeToOrderDto: PledgeToOrderDto): Promise<Order> {
     // Check if user has enough credits
-    const hasEnoughCredits = await this.creditsService.useCredits(userId, 1);
+    const hasEnoughCredits = await this.creditsService.useCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
     if (!hasEnoughCredits) {
       throw new BadRequestException('Not enough credits');
     }
@@ -85,7 +86,7 @@ export class OrdersService {
       );
 
       if (!result.success) {
-        await this.creditsService.addCredits(userId, 1);
+        await this.creditsService.addCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
         await this.eventsService.handlePledgeFailure(userId, result.message);
         throw new BadRequestException(result.message);
       }
@@ -115,7 +116,7 @@ export class OrdersService {
     } catch (error) {
       // If it's not already a BadRequestException, refund the credit
       if (!(error instanceof BadRequestException)) {
-        await this.creditsService.addCredits(userId, 1);
+        await this.creditsService.addCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
       }
       throw error;
     }
@@ -170,7 +171,7 @@ export class OrdersService {
   }
 
   // Listen for order expiry events
-  @OnEvent('order.expired')
+  @OnEvent(APP_CONSTANTS.EVENTS.ORDER_EXPIRED)
   async handleOrderExpiryEvent(orderId: string): Promise<void> {
     console.log(`Handling order expiry event for order: ${orderId}`);
     await this.handleOrderExpiry(orderId);
@@ -193,14 +194,14 @@ export class OrdersService {
     await this.redisService.deleteOrder(orderId);
 
     // Refund credit to creator
-    await this.creditsService.addCredits(order.creatorId, 1);
+    await this.creditsService.addCredits(order.creatorId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
     
     // Refund credits to all other pledgers
     const pledgerIds = Object.keys(order.pledgeMap).filter(id => id !== order.creatorId);
     for (const pledgerId of pledgerIds) {
       try {
-        await this.creditsService.addCredits(pledgerId, 1);
-        console.log(`Refunded 1 credit to pledger ${pledgerId} for expired order ${orderId}`);
+        await this.creditsService.addCredits(pledgerId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
+        console.log(`Refunded ${APP_CONSTANTS.CREDIT_COST_PER_ACTION} credit to pledger ${pledgerId} for expired order ${orderId}`);
       } catch (error) {
         console.error(`Failed to refund credit to pledger ${pledgerId}: ${error.message}`);
       }

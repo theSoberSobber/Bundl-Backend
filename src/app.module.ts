@@ -1,7 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { RedisModule } from '@nestjs-modules/ioredis';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -9,9 +8,9 @@ import { AuthModule } from './auth/auth.module';
 import { User } from './entities/user.entity';
 import { Order } from './entities/order.entity';
 import { OrdersModule } from './orders/orders.module';
-import { ProvidersModule } from './providers.module';
+import { SharedModule } from './shared/shared.module';
 import { CreditsModule } from './credits/credits.module';
-import * as crypto from 'crypto';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -34,21 +33,11 @@ import * as crypto from 'crypto';
         synchronize: false,
       }),
     }),
-    RedisModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'single',
-        url: `redis://${configService.get('REDIS_HOST')}:${configService.get('REDIS_PORT')}`,
-        options: {
-          keyPrefix: configService.get('REDIS_PREFIX')
-        }
-      }),
-    }),
     EventEmitterModule.forRoot(),
+    RedisModule,
     AuthModule,
     OrdersModule,
-    ProvidersModule,
+    SharedModule,
     CreditsModule,
   ],
   controllers: [AppController],
@@ -106,6 +95,8 @@ export class AppModule implements OnModuleInit {
       console.log(JSON.stringify(envVars, null, 2));
     } catch (error) {
       console.error('Missing required environment variable:', error.message);
+      console.error('Application cannot start without all required environment variables');
+      process.exit(1);
     }
   }
 }

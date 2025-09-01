@@ -6,7 +6,7 @@ import Redis from 'ioredis';
 import * as crypto from 'crypto';
 import { EntityManager } from 'typeorm';
 import { InjectEntityManager } from '@nestjs/typeorm';
-import { User } from '../entities/user.entity';
+import { User } from '../../entities/user.entity';
 
 // Define order details interface
 export interface OrderDetails {

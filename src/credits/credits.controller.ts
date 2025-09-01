@@ -15,8 +15,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateCreditOrderDto, VerifyPaymentDto, CreditPackage } from './dto/credits.dto';
-import { CashfreeService } from '../services/cashfree.service';
-import { CreditsService } from '../services/credits.service';
+import { CashfreeService } from './services/cashfree.service';
+import { CreditsService } from './credits.service';
 
 @ApiTags('Credits')
 @Controller('credits')

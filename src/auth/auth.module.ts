@@ -20,7 +20,7 @@ import { OtpRedisService } from './services/otp-redis.service';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET'),
         signOptions: {
-          expiresIn: '1h',
+          expiresIn: `${configService.get('JWT_EXPIRES_IN')}s`,
         },
       }),
     }),

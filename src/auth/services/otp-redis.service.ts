@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
-
-const OTP_EXPIRY_SECONDS = 300; // 5 minutes
+import { APP_CONSTANTS } from '../../constants/app.constants';
 
 @Injectable()
 export class OtpRedisService {
@@ -18,8 +17,8 @@ export class OtpRedisService {
    * @param phoneNumber Phone number
    */
   async storePhoneNumber(tid: string, phoneNumber: string): Promise<void> {
-    const key = `otp:${tid}:phone`;
-    await this.redis.set(key, phoneNumber, 'EX', OTP_EXPIRY_SECONDS);
+    const key = `${APP_CONSTANTS.REDIS_KEYS.OTP_PREFIX}${tid}:phone`;
+    await this.redis.set(key, phoneNumber, 'EX', APP_CONSTANTS.OTP_EXPIRY_SECONDS);
     this.logger.log(`Stored phone number ${phoneNumber} for TID: ${tid}`);
   }
 
@@ -29,7 +28,7 @@ export class OtpRedisService {
    * @returns The phone number or null if not found
    */
   async getPhoneNumber(tid: string): Promise<string | null> {
-    const key = `otp:${tid}:phone`;
+    const key = `${APP_CONSTANTS.REDIS_KEYS.OTP_PREFIX}${tid}:phone`;
     const phoneNumber = await this.redis.get(key);
     return phoneNumber;
   }
@@ -39,7 +38,7 @@ export class OtpRedisService {
    * @param tid Transaction ID
    */
   async deletePhoneNumber(tid: string): Promise<void> {
-    const key = `otp:${tid}:phone`;
+    const key = `${APP_CONSTANTS.REDIS_KEYS.OTP_PREFIX}${tid}:phone`;
     await this.redis.del(key);
     this.logger.log(`Deleted phone number for TID: ${tid}`);
   }

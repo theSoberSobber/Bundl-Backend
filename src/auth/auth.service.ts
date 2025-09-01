@@ -100,14 +100,11 @@ export class AuthService {
     }
 
     // Generate tokens
-    const tokens = this.generateTokens(user);
+    const tokens = await this.generateTokens(user);
     
     // Store refresh token on the user
     user.refreshToken = tokens.refreshToken;
     await this.userRepository.save(user);
-    
-    // Store the tokens in a set for this user
-    await this.storeTokenForUser(user.id, tokens.accessToken);
 
     return {
       user,
@@ -159,14 +156,15 @@ export class AuthService {
   }
 
   // Generate access and refresh tokens
-  private generateTokens(user: User): { accessToken: string; refreshToken: string } {
+  private async generateTokens(user: User): Promise<{ accessToken: string; refreshToken: string }> {
     const payload = { sub: user.id, phoneNumber: user.phoneNumber };
     
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
+    const accessTokenExpiry = `${this.configService.get('JWT_EXPIRES_IN')}s`;
+    const accessToken = this.jwtService.sign(payload, { expiresIn: accessTokenExpiry });
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '30d' });
     
     // Store access token in Redis
-    this.storeTokenForUser(user.id, accessToken);
+    await this.storeTokenForUser(user.id, accessToken);
     
     return {
       accessToken,
@@ -203,7 +201,8 @@ export class AuthService {
 
       // Generate only a new access token, keep the same refresh token
       const payload = { sub: user.id, phoneNumber: user.phoneNumber };
-      const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
+      const accessTokenExpiry = `${this.configService.get('JWT_EXPIRES_IN')}s`;
+      const accessToken = this.jwtService.sign(payload, { expiresIn: accessTokenExpiry });
       
       // Store the new access token
       await this.storeTokenForUser(userId, accessToken);
