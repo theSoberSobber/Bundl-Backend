@@ -18,7 +18,6 @@ ENV_DIR="${DEPLOYMENTS_DIR%/}/envs"
 
 echo "==> Ensure deployments dir exists: ${DEPLOYMENTS_DIR}"
 mkdir -p "${DEPLOYMENTS_DIR}"
-chown "$(whoami)" "${DEPLOYMENTS_DIR}" || true
 
 # If app dir exists, try graceful down (using sudo docker)
 if [ -d "${APP_DIR}" ]; then
@@ -68,7 +67,6 @@ fi
 
 # Copy all contents (including hidden files) from SRC_DIR into app root.
 cp -a "${SRC_DIR%/}/." "${DST_DIR%/}/"
-chmod -R 640 "${DST_DIR%/}/" || true
 
 # Run docker compose up --build -d in the app dir (using sudo)
 cd "${APP_DIR}"
