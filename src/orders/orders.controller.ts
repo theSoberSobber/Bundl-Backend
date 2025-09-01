@@ -22,7 +22,6 @@ import {
   CreateOrderDto,
   PledgeToOrderDto,
   GetOrdersNearDto,
-  OrderStatusDto,
 } from './dto/order.dto';
 
 @ApiTags('Orders')

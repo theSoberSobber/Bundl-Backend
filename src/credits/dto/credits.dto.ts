@@ -5,7 +5,6 @@ import {
   IsString,
   IsOptional,
   Min,
-  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
