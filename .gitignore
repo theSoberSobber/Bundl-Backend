@@ -1,6 +1,7 @@
 # compiled output
 /dist
 /node_modules
+*/node_modules
 /build
 
 # Logs
@@ -60,3 +61,4 @@ service.json
 
 # Reference
 refrence
+ref

@@ -16,15 +16,15 @@ export class EventsService {
   // Handle successful pledge event
   async handleSuccessfulPledge(order: Order, userId: string): Promise<void> {
     // Get all users involved in the order except the current user
-    const userIds = Object.keys(order.pledgeMap).filter(id => id !== userId);
-    
+    const userIds = Object.keys(order.pledgeMap).filter((id) => id !== userId);
+
     if (userIds.length === 0) {
       return;
     }
 
     // Get all users with FCM tokens
     const users = await this.userRepository.find({
-      where: userIds.map(id => ({ id })),
+      where: userIds.map((id) => ({ id })),
     });
 
     // Send notifications to users with FCM tokens
@@ -37,7 +37,7 @@ export class EventsService {
           {
             orderId: order.id,
             eventType: 'new_pledge',
-          }
+          },
         );
       }
     }
@@ -46,14 +46,14 @@ export class EventsService {
   // Handle order completed event
   async handleOrderCompleted(order: Order): Promise<void> {
     const userIds = Object.keys(order.pledgeMap);
-    
+
     if (userIds.length === 0) {
       return;
     }
 
     // Get all users with FCM tokens
     const users = await this.userRepository.find({
-      where: userIds.map(id => ({ id })),
+      where: userIds.map((id) => ({ id })),
     });
 
     // Send notifications to all pledgers
@@ -66,7 +66,7 @@ export class EventsService {
           {
             orderId: order.id,
             eventType: 'order_completed',
-          }
+          },
         );
       }
     }
@@ -75,14 +75,14 @@ export class EventsService {
   // Handle order expired event
   async handleOrderExpired(order: Order): Promise<void> {
     const userIds = Object.keys(order.pledgeMap);
-    
+
     if (userIds.length === 0) {
       return;
     }
 
     // Get all users with FCM tokens
     const users = await this.userRepository.find({
-      where: userIds.map(id => ({ id })),
+      where: userIds.map((id) => ({ id })),
     });
 
     // Send notifications to all pledgers
@@ -98,8 +98,8 @@ export class EventsService {
             platform: order.platform,
             amountNeeded: order.amountNeeded.toString(),
             yourPledge: (order.pledgeMap[user.id] || 0).toString(),
-            creditRefunded: 'true'
-          }
+            creditRefunded: 'true',
+          },
         );
       }
     }
@@ -108,7 +108,7 @@ export class EventsService {
   // Handle pledge failure event
   async handlePledgeFailure(userId: string, reason: string): Promise<void> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
-    
+
     if (!user || !user.fcmToken) {
       return;
     }
@@ -120,7 +120,7 @@ export class EventsService {
       {
         eventType: 'pledge_failed',
         reason,
-      }
+      },
     );
   }
 
@@ -129,9 +129,9 @@ export class EventsService {
     fcmToken: string,
     title: string,
     body: string,
-    data: Record<string, string> = {}
+    data: Record<string, string> = {},
   ): Promise<void> {
     // Use FcmService to send the notification
     await this.fcmService.sendPushNotification(fcmToken, title, body, data);
   }
-} 
+}

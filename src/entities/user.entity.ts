@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { APP_CONSTANTS } from '../constants/app.constants';
 
 @Entity()
 export class User {
@@ -11,9 +12,9 @@ export class User {
   @Column({ nullable: true })
   fcmToken: string;
 
-  @Column({ default: 5 })
+  @Column({ default: APP_CONSTANTS.DEFAULT_USER_CREDITS })
   credits: number;
 
   @Column({ nullable: true })
   refreshToken: string;
-} 
+}

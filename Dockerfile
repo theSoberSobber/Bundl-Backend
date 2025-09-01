@@ -29,6 +29,9 @@ RUN npm install --legacy-peer-deps --only=production
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy service.json file for Firebase Cloud Messaging
+COPY service.json ./service.json
+
 # Expose port
 EXPOSE 3002
 

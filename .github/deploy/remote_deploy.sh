@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# remote_deploy.sh (runs on remote server)
+# expects env:
+# APP_REPO_URL, DEPLOYMENTS_DIR, APP_FOLDER, ENV_REPO_URL, ENV_SUBPATH, ENV_FILE_NAME, COMPOSE_FILE
+
+: "${APP_REPO_URL:?}"       # must be SSH form (git@github.com:owner/repo.git)
+: "${DEPLOYMENTS_DIR:?}"
+: "${APP_FOLDER:?}"
+: "${ENV_REPO_URL:?}"      # must be SSH form (git@github.com:owner/envs.git)
+: "${ENV_SUBPATH:=}"
+: "${ENV_FILE_NAME:=.env}"
+: "${COMPOSE_FILE:=docker-compose.yml}"
+
+APP_DIR="${DEPLOYMENTS_DIR%/}/${APP_FOLDER}"
+ENV_DIR="${DEPLOYMENTS_DIR%/}/envs"
+
+echo "==> Ensure deployments dir exists: ${DEPLOYMENTS_DIR}"
+mkdir -p "${DEPLOYMENTS_DIR}"
+chown "$(whoami)" "${DEPLOYMENTS_DIR}" || true
+
+# If app dir exists, try graceful down (using sudo docker)
+if [ -d "${APP_DIR}" ]; then
+  echo "==> App dir exists. Attempting docker compose down in ${APP_DIR}"
+  if [ -f "${APP_DIR}/${COMPOSE_FILE}" ]; then
+    cd "${APP_DIR}"
+    if sudo docker compose version >/dev/null 2>&1; then
+      sudo docker compose -f "${COMPOSE_FILE}" down || true
+    elif command -v docker-compose >/dev/null 2>&1; then
+      sudo docker-compose -f "${COMPOSE_FILE}" down || true
+    fi
+    cd - >/dev/null || true
+  else
+    echo "No compose file in existing app dir; continuing."
+  fi
+fi
+
+echo "==> Removing old app dir: ${APP_DIR}"
+rm -rf "${APP_DIR}"
+
+echo "==> Cloning app repo (${APP_REPO_URL}) into ${APP_DIR}"
+# Use SSH-based clone (server must have access via SSH key / deploy key)
+git clone --depth=1 "${APP_REPO_URL}" "${APP_DIR}"
+
+echo "==> Removing old envs clone: ${ENV_DIR}"
+rm -rf "${ENV_DIR}"
+
+echo "==> Cloning envs repo (${ENV_REPO_URL}) into ${ENV_DIR}"
+git clone --depth=1 "${ENV_REPO_URL}" "${ENV_DIR}"
+
+# Determine source directory to copy from inside envs repo.
+if [ -n "${ENV_SUBPATH}" ]; then
+  SRC_DIR="${ENV_DIR%/}/${ENV_SUBPATH%/}"
+else
+  SRC_DIR="${ENV_DIR%/}"
+fi
+
+DST_DIR="${APP_DIR%/}"
+
+echo "==> Copying contents from envs source dir: ${SRC_DIR} -> ${DST_DIR}"
+
+if [ ! -d "${SRC_DIR}" ]; then
+  echo "ERROR: Source env directory not found: ${SRC_DIR}" >&2
+  ls -la "${ENV_DIR}" || true
+  exit 1
+fi
+
+# Copy all contents (including hidden files) from SRC_DIR into app root.
+cp -a "${SRC_DIR%/}/." "${DST_DIR%/}/"
+chmod -R 640 "${DST_DIR%/}/" || true
+
+# Run docker compose up --build -d in the app dir (using sudo)
+cd "${APP_DIR}"
+echo "==> Using compose file: ${COMPOSE_FILE}"
+if sudo docker compose version >/dev/null 2>&1; then
+  sudo docker compose -f "${COMPOSE_FILE}" up --build -d
+elif command -v docker-compose >/dev/null 2>&1; then
+  sudo docker-compose -f "${COMPOSE_FILE}" up --build -d
+else
+  echo "ERROR: docker compose not available on remote machine" >&2
+  exit 1
+fi
+
+echo "==> Waiting 5s and then checking container statuses..."
+sleep 5
+
+# Basic health check: check docker ps for running containers (using sudo)
+if sudo docker compose version >/dev/null 2>&1; then
+  sudo docker compose -f "${COMPOSE_FILE}" ps --status running || true
+else
+  sudo docker-compose -f "${COMPOSE_FILE}" ps --filter "status=running" || true
+fi
+
+# Check at least one container is running
+num_running=$(sudo docker ps --filter "status=running" --format '{{.Names}}' | wc -l | tr -d ' ')
+if [ "${num_running}" -lt 1 ]; then
+  echo "ERROR: No running containers detected after compose up." >&2
+  sudo docker ps -a || true
+  exit 2
+fi
+
+echo "==> Deployment looks healthy (at least one container is running)."
+

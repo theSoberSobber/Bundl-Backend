@@ -1,11 +1,12 @@
-import { Injectable, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { Redis } from 'ioredis';
 import { Order } from '../../entities/order.entity';
-import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { APP_CONSTANTS } from '../../constants/app.constants';
 
 @Injectable()
-export class RedisService implements OnModuleInit {
+export class OrdersRedisService implements OnModuleInit {
   constructor(
     @InjectRedis() private readonly redis: Redis,
     private readonly eventEmitter: EventEmitter2,
@@ -17,10 +18,13 @@ export class RedisService implements OnModuleInit {
     const subscriber = this.redis.duplicate();
 
     subscriber.on('message', (channel, message) => {
-      if (channel === keyspaceChannel && message.startsWith('bundl:order:')) {
+      if (
+        channel === keyspaceChannel &&
+        message.startsWith(`bundl:${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}`)
+      ) {
         const orderId = message.split(':')[2];
         // Emit an event for order expiry that will be handled by the Orders service
-        this.eventEmitter.emit('order.expired', orderId);
+        this.eventEmitter.emit(APP_CONSTANTS.EVENTS.ORDER_EXPIRED, orderId);
         console.log(`Order expired: ${orderId}`);
       }
     });
@@ -29,41 +33,44 @@ export class RedisService implements OnModuleInit {
   }
 
   // Store order with expiry (10 minutes)
-  async storeOrder(order: Order, expirySeconds: number = 600): Promise<void> {
-    const key = `order:${order.id}`;
+  async storeOrder(
+    order: Order,
+    expirySeconds: number = APP_CONSTANTS.DEFAULT_ORDER_EXPIRY_SECONDS,
+  ): Promise<void> {
+    const key = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${order.id}`;
     const serializedOrder = JSON.stringify(order);
-    
+
     // Store order with expiry
     await this.redis.setex(key, expirySeconds, serializedOrder);
-    
+
     // Add to geo index
     await this.redis.geoadd(
-      'orders:geo',
+      APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY,
       order.longitude,
       order.latitude,
-      key
+      key,
     );
   }
 
   // Get order by ID
   async getOrder(orderId: string): Promise<Order | null> {
-    const key = `order:${orderId}`;
+    const key = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`;
     const serializedOrder = await this.redis.get(key);
-    
+
     if (!serializedOrder) {
       return null;
     }
-    
+
     return JSON.parse(serializedOrder);
   }
 
   // Delete order (used when completed)
   async deleteOrder(orderId: string): Promise<void> {
-    const key = `order:${orderId}`;
-    
+    const key = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`;
+
     // Remove from geo index
-    await this.redis.zrem('orders:geo', key);
-    
+    await this.redis.zrem(APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY, key);
+
     // Delete the order
     await this.redis.del(key);
   }
@@ -72,28 +79,28 @@ export class RedisService implements OnModuleInit {
   async findOrdersNear(
     longitude: number,
     latitude: number,
-    radiusKm: number = 5
+    radiusKm: number = APP_CONSTANTS.DEFAULT_SEARCH_RADIUS_KM,
   ): Promise<Order[]> {
-    const geoResults = await this.redis.georadius(
-      'orders:geo',
+    const geoResults = (await this.redis.georadius(
+      APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY,
       longitude,
       latitude,
       radiusKm,
-      'km'
-    ) as string[];
-    
+      'km',
+    )) as string[];
+
     if (!geoResults || geoResults.length === 0) {
       return [];
     }
-    
+
     // Get all orders in parallel
     const orders = await Promise.all(
       geoResults.map(async (key) => {
         const serializedOrder = await this.redis.get(key);
         return serializedOrder ? JSON.parse(serializedOrder) : null;
-      })
+      }),
     );
-    
+
     return orders.filter(Boolean);
   }
 
@@ -101,7 +108,7 @@ export class RedisService implements OnModuleInit {
   async pledgeToOrder(
     orderId: string,
     userId: string,
-    pledgeAmount: number
+    pledgeAmount: number,
   ): Promise<{ success: boolean; message: string; updatedOrder?: Order }> {
     const script = `
       local key = KEYS[1]
@@ -123,7 +130,10 @@ export class RedisService implements OnModuleInit {
       end
       
       -- Check if already completed
-      if order.totalPledge >= order.amountNeeded then
+      local orderAmount = tonumber(order.amountNeeded)
+      local orderPledge = tonumber(order.totalPledge or 0)
+      
+      if orderPledge >= orderAmount then
         return {false, 'Order is already fully pledged', nil}
       end
       
@@ -132,20 +142,21 @@ export class RedisService implements OnModuleInit {
         order.pledgeMap = {}
       end
       
-      -- Check if user already pledged
+      -- Check if user already pledged (to track new users)
       local isNewUser = not order.pledgeMap[userId]
+      local currentPledge = tonumber(order.pledgeMap[userId] or 0)
       
-      -- Update pledge map
-      order.pledgeMap[userId] = pledgeAmount
+      -- Update pledge map - ADD to existing pledge instead of replacing
+      order.pledgeMap[userId] = currentPledge + pledgeAmount
       
       -- Update total pledge and total users
-      order.totalPledge = (order.totalPledge or 0) + pledgeAmount
+      order.totalPledge = orderPledge + pledgeAmount
       if isNewUser then
-        order.totalUsers = (order.totalUsers or 0) + 1
+        order.totalUsers = tonumber(order.totalUsers or 0) + 1
       end
       
       -- Check if order is now completed
-      if order.totalPledge >= order.amountNeeded then
+      if order.totalPledge >= orderAmount then
         order.status = 'COMPLETED'
       end
       
@@ -161,20 +172,20 @@ export class RedisService implements OnModuleInit {
       
       return {true, 'Pledge successful', updatedOrder}
     `;
-    
+
     try {
-      const result = await this.redis.eval(
+      const result = (await this.redis.eval(
         script,
         1,
-        `order:${orderId}`,
+        `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`,
         userId,
-        pledgeAmount.toString()
-      ) as [boolean, string, string];
-      
+        pledgeAmount.toString(),
+      )) as [boolean, string, string];
+
       if (!result[0]) {
         return { success: false, message: result[1] };
       }
-      
+
       return {
         success: true,
         message: result[1],
