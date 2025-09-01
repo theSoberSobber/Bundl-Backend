@@ -118,7 +118,7 @@ jobs:
             echo "ERROR: Set repository secret TAILSCALE_AUTHKEY." >&2
             exit 1
           fi
-          curl -fsSL https://pkgs.tailscale.com/install.sh | sudo bash
+          curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey "${TAILSCALE_AUTHKEY}" || true
           sleep 3
           sudo tailscale status || true
