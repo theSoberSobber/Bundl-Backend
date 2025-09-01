@@ -7,14 +7,12 @@ import { OrdersRedisService } from './services/orders-redis.service';
 import { Order } from '../entities/order.entity';
 import { User } from '../entities/user.entity';
 import { AuthModule } from '../auth/auth.module';
-import { SharedModule } from '../shared/shared.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, User]),
     EventEmitterModule,
     AuthModule,
-    SharedModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersRedisService],
