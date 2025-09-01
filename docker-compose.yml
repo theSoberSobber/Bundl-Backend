@@ -22,6 +22,28 @@ services:
       retries: 3
       start_period: 40s
 
+  marketing-dashboard:
+    build:
+      context: ./marketing-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    env_file:
+      - .env
+    environment:
+      - MARKETING_PORT=3003
+    volumes:
+      - ./service.json:/app/service.json:ro  # Share Firebase service file
+    networks:
+      - bundl-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   postgres:
     image: postgres:15-alpine
     ports:
