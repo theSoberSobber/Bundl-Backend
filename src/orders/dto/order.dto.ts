@@ -120,4 +120,22 @@ export class OrderStatusDto {
   })
   @IsUUID()
   orderId: string;
+
+  @ApiProperty({
+    description: 'Map of phone numbers to pledge amounts (only for completed orders)',
+    example: {
+      '+919770483089': 48,
+      '+911234567890': 50,
+      '+910987654321': 16
+    },
+    required: false
+  })
+  phoneNumberMap?: Record<string, number>;
+
+  @ApiProperty({
+    description: 'Note about the order status (for completed or expired orders)',
+    example: 'Order Completed Successfully with 3 pariticipants.',
+    required: false
+  })
+  note?: string;
 }

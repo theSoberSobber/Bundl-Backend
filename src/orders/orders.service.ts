@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { User } from '../entities/user.entity';
 import { OrdersRedisService } from './services/orders-redis.service';
@@ -209,6 +209,38 @@ export class OrdersService {
             error.stack,
           );
         }
+
+        // Add phone numbers for all users
+        const phoneNumberMap = {};
+        const pledgerIds = Object.keys(updatedOrder.pledgeMap);
+        
+        // Get all users in a single query
+        try {
+          const users = await this.userRepository.find({
+            where: { id: In(pledgerIds) }
+          });
+          
+          // Create phoneNumberMap
+          users.forEach(user => {
+            if (user && user.phoneNumber && updatedOrder.pledgeMap[user.id]) {
+              phoneNumberMap[user.phoneNumber] = updatedOrder.pledgeMap[user.id];
+            }
+          });
+          
+          // Add note for completed order
+          const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+          
+          // Return order with phone numbers and note
+          return {
+            ...updatedOrder,
+            phoneNumberMap,
+            note
+          };
+        } catch (error) {
+          console.error("Error fetching user data for phoneNumberMap:", error);
+          // Return order without phoneNumberMap if there was an error
+          return updatedOrder;
+        }
       }
 
       return updatedOrder;
@@ -262,8 +294,51 @@ export class OrdersService {
       );
     }
 
-    // If order is not completed, hide the pledgers information
-    if (order.status !== OrderStatus.COMPLETED) {
+    // For completed orders, add phone numbers - REGARDLESS OF PARTICIPANT COUNT
+    if (order.status === OrderStatus.COMPLETED) {
+      // Add phone numbers for all users
+      const phoneNumberMap = {};
+      const pledgerIds = Object.keys(order.pledgeMap);
+      
+      try {
+        // Get all users in a single query
+        const users = await this.userRepository.find({
+          where: { id: In(pledgerIds) }
+        });
+        
+        // Create phoneNumberMap
+        users.forEach(user => {
+          if (user && user.phoneNumber && order.pledgeMap[user.id]) {
+            phoneNumberMap[user.phoneNumber] = order.pledgeMap[user.id];
+          }
+        });
+        
+        // Add note for completed order
+        const note = `Order Completed Successfully with ${pledgerIds.length} pariticipants.`;
+        
+        // Return order with phone numbers and note
+        return {
+          ...order,
+          phoneNumberMap,
+          note
+        };
+      } catch (error) {
+        console.error("Error fetching user data for phoneNumberMap:", error);
+        // Return order without phoneNumberMap if there was an error
+        return order;
+      }
+    }
+    
+    // For expired orders, add a note
+    if (order.status === OrderStatus.EXPIRED) {
+      return {
+        ...order,
+        note: "Refunded 1 credit back for expiry"
+      };
+    }
+
+    // If order is still active, hide other pledgers information
+    if (order.status === OrderStatus.ACTIVE) {
       // Create a copy of the order with pledgeMap hidden
       const { pledgeMap, ...orderWithoutPledgeMap } = order;
       return {

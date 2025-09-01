@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { EntityManager } from 'typeorm';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import { User } from '../../entities/user.entity';
+import { createHmac } from 'crypto';
 
 // Define order details interface
 export interface OrderDetails {
@@ -23,10 +24,9 @@ export class CashfreeService {
   private readonly logger = new Logger(CashfreeService.name);
   private readonly apiVersion = '2023-08-01';
   private readonly creditPrices = {
-    1: 10, // 1 credit for ₹10
-    5: 45, // 5 credits for ₹45
-    10: 80, // 10 credits for ₹80
-    20: 150, // 20 credits for ₹150
+    5: 5,     // 5 credits for ₹5
+    10: 8,    // 10 credits for ₹8
+    20: 12,   // 20 credits for ₹12
   };
 
   private readonly baseUrl: string;
@@ -65,23 +65,23 @@ export class CashfreeService {
       {
         id: 'basic',
         credits: 5,
-        price: 5,
+        price: 5,  // ₹1 per credit for 5 credits
         name: 'Basic Package',
-        description: '5 credits for creating or pledging to orders',
+        description: '5 credits for creating or pledging to orders'
       },
       {
         id: 'standard',
         credits: 10,
-        price: 8,
+        price: 8,  // ₹0.8 per credit for 10 credits
         name: 'Standard Package',
-        description: '10 credits for creating or pledging to orders',
+        description: '10 credits for creating or pledging to orders'
       },
       {
         id: 'premium',
         credits: 20,
-        price: 12,
+        price: 12,  // ₹0.6 per credit for 20 credits
         name: 'Premium Package',
-        description: '20 credits for creating or pledging to orders',
+        description: '20 credits for creating or pledging to orders'
       },
     ];
   }
@@ -94,14 +94,16 @@ export class CashfreeService {
     if (this.creditPrices[credits]) {
       return this.creditPrices[credits];
     }
-
-    // Otherwise calculate price: base price is ₹10 per credit, with 10% discount for quantity
-    if (credits <= 5) {
-      return credits;
-    } else if (credits <= 10) {
-      return Math.round(credits * 0.8);
+    
+    // Calculate price based on new ranges
+    if (credits <= 4) {
+      return Math.round(credits * 1.2);  // ₹1.2 per credit for 1-4 credits
+    } else if (credits <= 9) {
+      return Math.round(credits * 1.0);  // ₹1.0 per credit for 5-9 credits
+    } else if (credits <= 19) {
+      return Math.round(credits * 0.8);  // ₹0.8 per credit for 10-19 credits
     } else {
-      return Math.round(credits * 0.6);
+      return Math.round(credits * 0.6);  // ₹0.6 per credit for 20+ credits
     }
   }
 
@@ -261,17 +263,12 @@ export class CashfreeService {
           'x-api-version': this.apiVersion,
         },
       });
+      
+      console.log(response.data);
 
       const { order_status } = response.data;
 
       this.logger.log(`Verifying order ${orderId} - Status: ${order_status}`);
-
-      if (order_status === 'PAID') {
-        return {
-          success: true,
-          orderStatus: order_status,
-        };
-      }
 
       return {
         success: order_status === 'PAID',
@@ -299,25 +296,39 @@ export class CashfreeService {
   /**
    * Verify Cashfree webhook signature
    */
-  verifyWebhookSignature(
+  async verifyWebhookSignature(
     payload: any,
-    signature: string,
     timestamp: string,
-  ): boolean {
+    signature: string,
+  ): Promise<boolean> {
     try {
-      const data = JSON.stringify(payload);
-      const signatureData = data + this.clientSecret + timestamp;
-      const computedSignature = crypto
-        .createHmac('sha256', this.clientSecret as string)
-        .update(signatureData)
-        .digest('base64');
+      if (!this.clientSecret) {
+        this.logger.error('Client secret is not configured');
+        return false;
+      }
+
+      // Get the raw payload string without any modifications
+      // This preserves the exact format of numbers like 170.00 vs 170
+      const payloadString = JSON.stringify(payload, null, 0);
+      
+      // Combine payload + timestamp + client secret in the correct order
+      const dataToSign = payloadString + timestamp + this.clientSecret;
+      
+      // Create HMAC SHA256 hash
+      const hmac = crypto.createHmac('sha256', this.clientSecret);
+      hmac.update(dataToSign);
+      const computedSignature = hmac.digest('base64');
+
+      // Log for debugging
+      this.logger.debug(`Verifying webhook signature with timestamp: ${timestamp}`);
+      this.logger.debug(`Expected: ${signature}`);
+      this.logger.debug(`Computed: ${computedSignature}`);
+      this.logger.debug(`Payload string: ${payloadString}`);
+      this.logger.debug(`Data to sign: ${dataToSign}`);
 
       return computedSignature === signature;
     } catch (error) {
-      this.logger.error(
-        `Error verifying webhook signature: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error('Error verifying webhook signature:', error);
       return false;
     }
   }
@@ -378,6 +389,58 @@ export class CashfreeService {
       if (currentValue === lockValue) {
         await this.redis.del(lockKey);
       }
+    }
+  }
+
+  /**
+   * Handle webhook notification from Cashfree
+   */
+  async handleWebhook(payload: any, signature: string, timestamp: string): Promise<boolean> {
+    try {
+      // Verify webhook signature
+      const isValid = await this.verifyWebhookSignature(payload, timestamp, signature);
+      if (!isValid) {
+        this.logger.warn('Invalid webhook signature received');
+        return false;
+      }
+
+      // Get order details from Redis
+      const orderId = payload.data.order.order_id;
+      const orderDetails = await this.getOrderDetails(orderId);
+      
+      if (!orderDetails) {
+        this.logger.error(`Order details not found for order ID: ${orderId}`);
+        return false;
+      }
+
+      // Verify payment amount matches what we expected
+      const paidAmount = parseFloat(payload.data.payment.payment_amount);
+      if (paidAmount !== orderDetails.amount) {
+        this.logger.error(`Payment amount mismatch. Expected: ${orderDetails.amount}, Received: ${paidAmount}`);
+        return false;
+      }
+
+      // Process payment based on webhook type
+      switch (payload.type) {
+        case 'PAYMENT_SUCCESS_WEBHOOK':
+          this.logger.log(`Processing successful payment for order ${orderId}`);
+          return await this.processPaymentAtomically(orderId);
+          
+        case 'PAYMENT_FAILED_WEBHOOK':
+          this.logger.log(`Payment failed for order ${orderId}`);
+          return true;
+          
+        case 'PAYMENT_USER_DROPPED_WEBHOOK':
+          this.logger.log(`User dropped payment for order ${orderId}`);
+          return true;
+          
+        default:
+          this.logger.warn(`Unknown webhook type: ${payload.type}`);
+          return false;
+      }
+    } catch (error) {
+      this.logger.error(`Error processing webhook: ${error.message}`, error.stack);
+      return false;
     }
   }
 }

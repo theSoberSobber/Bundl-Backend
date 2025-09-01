@@ -130,7 +130,10 @@ export class OrdersRedisService implements OnModuleInit {
       end
       
       -- Check if already completed
-      if order.totalPledge >= order.amountNeeded then
+      local orderAmount = tonumber(order.amountNeeded)
+      local orderPledge = tonumber(order.totalPledge or 0)
+      
+      if orderPledge >= orderAmount then
         return {false, 'Order is already fully pledged', nil}
       end
       
@@ -139,20 +142,21 @@ export class OrdersRedisService implements OnModuleInit {
         order.pledgeMap = {}
       end
       
-      -- Check if user already pledged
+      -- Check if user already pledged (to track new users)
       local isNewUser = not order.pledgeMap[userId]
+      local currentPledge = tonumber(order.pledgeMap[userId] or 0)
       
-      -- Update pledge map
-      order.pledgeMap[userId] = pledgeAmount
+      -- Update pledge map - ADD to existing pledge instead of replacing
+      order.pledgeMap[userId] = currentPledge + pledgeAmount
       
       -- Update total pledge and total users
-      order.totalPledge = (order.totalPledge or 0) + pledgeAmount
+      order.totalPledge = orderPledge + pledgeAmount
       if isNewUser then
-        order.totalUsers = (order.totalUsers or 0) + 1
+        order.totalUsers = tonumber(order.totalUsers or 0) + 1
       end
       
       -- Check if order is now completed
-      if order.totalPledge >= order.amountNeeded then
+      if order.totalPledge >= orderAmount then
         order.status = 'COMPLETED'
       end
       
