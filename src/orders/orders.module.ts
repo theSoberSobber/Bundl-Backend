@@ -8,6 +8,7 @@ import { Order } from '../entities/order.entity';
 import { User } from '../entities/user.entity';
 import { AuthModule } from '../auth/auth.module';
 import { CreditsModule } from '../credits/credits.module';
+import { SharedModule } from '../shared/shared.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { CreditsModule } from '../credits/credits.module';
     EventEmitterModule,
     AuthModule,
     CreditsModule,
+    SharedModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersRedisService],
