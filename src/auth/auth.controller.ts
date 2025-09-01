@@ -1,7 +1,25 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RefreshTokenDto, SendOtpDto, VerifyOtpDto, UpdateFcmTokenDto } from './dto/auth.dto';
+import {
+  RefreshTokenDto,
+  SendOtpDto,
+  VerifyOtpDto,
+  UpdateFcmTokenDto,
+} from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Request } from 'express';
 
@@ -24,29 +42,41 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Verify OTP and login or create user' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'OTP verified and user authenticated successfully' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'OTP verified and user authenticated successfully',
+  })
   @Post('verifyOtp')
   @HttpCode(HttpStatus.OK)
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
     return this.authService.verifyOtpAndLoginOrCreateUser(
       verifyOtpDto.tid,
       verifyOtpDto.otp,
-      verifyOtpDto.fcmToken
+      verifyOtpDto.fcmToken,
     );
   }
 
   @ApiOperation({ summary: 'Update FCM token for authenticated user' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'FCM token updated successfully' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'FCM token updated successfully',
+  })
   @UseGuards(JwtAuthGuard)
   @Post('updateFcmToken')
   @HttpCode(HttpStatus.OK)
-  async updateFcmToken(@Req() req: RequestWithUser, @Body() updateFcmTokenDto: UpdateFcmTokenDto) {
+  async updateFcmToken(
+    @Req() req: RequestWithUser,
+    @Body() updateFcmTokenDto: UpdateFcmTokenDto,
+  ) {
     const userId = req.user.id;
     return this.authService.updateFcmToken(userId, updateFcmTokenDto.fcmToken);
   }
 
   @ApiOperation({ summary: 'Sign out from current session' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Successfully signed out' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Successfully signed out',
+  })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('signOut')
@@ -57,7 +87,10 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Refresh authentication tokens' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Tokens refreshed successfully' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Tokens refreshed successfully',
+  })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refreshTokens(@Body() refreshTokenDto: RefreshTokenDto) {

@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { User } from './user.entity';
 
 export enum OrderStatus {
@@ -15,7 +21,7 @@ export class Order {
   @Column({
     type: 'enum',
     enum: OrderStatus,
-    default: OrderStatus.ACTIVE
+    default: OrderStatus.ACTIVE,
   })
   status: OrderStatus;
 
@@ -46,4 +52,4 @@ export class Order {
 
   @Column('decimal', { precision: 10, scale: 6 })
   longitude: number;
-} 
+}

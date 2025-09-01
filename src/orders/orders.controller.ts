@@ -1,19 +1,29 @@
-import { 
-  Controller, 
-  Post, 
-  Body, 
-  UseGuards, 
-  Req, 
-  Get, 
-  Param, 
-  Query, 
-  HttpCode, 
-  HttpStatus 
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Get,
+  Param,
+  Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateOrderDto, PledgeToOrderDto, GetOrdersNearDto, OrderStatusDto } from './dto/order.dto';
+import {
+  CreateOrderDto,
+  PledgeToOrderDto,
+  GetOrdersNearDto,
+  OrderStatusDto,
+} from './dto/order.dto';
 
 @ApiTags('Orders')
 @Controller('orders')
@@ -21,7 +31,10 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @ApiOperation({ summary: 'Create a new order' })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Order created successfully' })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Order created successfully',
+  })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('createOrder')
@@ -42,7 +55,10 @@ export class OrdersController {
   }
 
   @ApiOperation({ summary: 'Get active orders near a location' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Returns list of active orders' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns list of active orders',
+  })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('activeOrders')

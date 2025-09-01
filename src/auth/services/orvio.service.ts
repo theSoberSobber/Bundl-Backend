@@ -34,12 +34,14 @@ export class OrvioService {
 
     try {
       const orgName = this.configService.get<string>('ORVIO_ORG_NAME');
-      
+
       const result = await this.client.create(phoneNumber, {
         orgName,
       });
 
-      this.logger.log(`OTP sent to ${phoneNumber} with transaction ID: ${result.tid}`);
+      this.logger.log(
+        `OTP sent to ${phoneNumber} with transaction ID: ${result.tid}`,
+      );
       return { tid: result.tid };
     } catch (error) {
       this.logger.error(`Failed to send OTP: ${error.message}`, error.stack);
@@ -60,12 +62,14 @@ export class OrvioService {
 
     try {
       const result = await this.client.verify(tid, otp);
-      this.logger.log(`OTP verification result for transaction ${tid}: ${JSON.stringify(result)}`);
-      
+      this.logger.log(
+        `OTP verification result for transaction ${tid}: ${JSON.stringify(result)}`,
+      );
+
       return { verified: result.success === true };
     } catch (error) {
       this.logger.error(`Failed to verify OTP: ${error.message}`, error.stack);
       throw error;
     }
   }
-} 
+}

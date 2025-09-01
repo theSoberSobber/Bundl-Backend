@@ -19,11 +19,11 @@ export class CreditsService {
   // Get user credits
   async getCredits(userId: string): Promise<number> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
-    
+
     if (!user) {
       throw new BadRequestException('User not found');
     }
-    
+
     return user.credits;
   }
 
@@ -33,7 +33,7 @@ export class CreditsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    
+
     try {
       // Lock the user row for update
       const user = await queryRunner.manager
@@ -41,19 +41,19 @@ export class CreditsService {
         .setLock('pessimistic_write')
         .where('user.id = :userId', { userId })
         .getOne();
-      
+
       if (!user) {
         throw new BadRequestException('User not found');
       }
-      
+
       if (user.credits < amount) {
         return false;
       }
-      
+
       // Update the user's credits
       user.credits -= amount;
       await queryRunner.manager.save(user);
-      
+
       // Commit the transaction
       await queryRunner.commitTransaction();
       return true;
@@ -73,7 +73,7 @@ export class CreditsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    
+
     try {
       // Lock the user row for update
       const user = await queryRunner.manager
@@ -81,15 +81,15 @@ export class CreditsService {
         .setLock('pessimistic_write')
         .where('user.id = :userId', { userId })
         .getOne();
-      
+
       if (!user) {
         throw new BadRequestException('User not found');
       }
-      
+
       // Update the user's credits
       user.credits += amount;
       await queryRunner.manager.save(user);
-      
+
       // Commit the transaction
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -101,4 +101,4 @@ export class CreditsService {
       await queryRunner.release();
     }
   }
-} 
+}

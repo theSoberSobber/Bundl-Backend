@@ -17,4 +17,4 @@ export class User {
 
   @Column({ nullable: true })
   refreshToken: string;
-} 
+}

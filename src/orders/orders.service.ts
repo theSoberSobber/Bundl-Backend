@@ -1,12 +1,21 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { User } from '../entities/user.entity';
-import { RedisService } from '../redis/redis.service';
+import { OrdersRedisService } from './services/orders-redis.service';
 import { CreditsService } from '../credits/credits.service';
 import { EventsService } from '../services/events.service';
-import { CreateOrderDto, PledgeToOrderDto, GetOrdersNearDto } from './dto/order.dto';
+import {
+  CreateOrderDto,
+  PledgeToOrderDto,
+  GetOrdersNearDto,
+} from './dto/order.dto';
 import { OnEvent } from '@nestjs/event-emitter';
 import { APP_CONSTANTS } from '../constants/app.constants';
 
@@ -17,15 +26,21 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    private readonly redisService: RedisService,
+    private readonly ordersRedisService: OrdersRedisService,
     private readonly creditsService: CreditsService,
     private readonly eventsService: EventsService,
   ) {}
 
   // Create a new order
-  async createOrder(userId: string, createOrderDto: CreateOrderDto): Promise<Order> {
+  async createOrder(
+    userId: string,
+    createOrderDto: CreateOrderDto,
+  ): Promise<Order> {
     // Check if user has enough credits
-    const hasEnoughCredits = await this.creditsService.useCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
+    const hasEnoughCredits = await this.creditsService.useCredits(
+      userId,
+      APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+    );
     if (!hasEnoughCredits) {
       throw new BadRequestException('Not enough credits');
     }
@@ -52,41 +67,55 @@ export class OrdersService {
         savedOrder.pledgeMap = { [userId]: createOrderDto.initialPledge };
         savedOrder.totalPledge = createOrderDto.initialPledge;
         savedOrder.totalUsers = 1;
-        
+
         // Update in database
         await this.orderRepository.save(savedOrder);
       }
 
       // Add to Redis with expiry
-      const expirySeconds = createOrderDto.expirySeconds || APP_CONSTANTS.DEFAULT_ORDER_EXPIRY_SECONDS;
-      await this.redisService.storeOrder(savedOrder, expirySeconds);
+      const expirySeconds =
+        createOrderDto.expirySeconds ||
+        APP_CONSTANTS.DEFAULT_ORDER_EXPIRY_SECONDS;
+      await this.ordersRedisService.storeOrder(savedOrder, expirySeconds);
 
       return savedOrder;
     } catch (error) {
       // Refund credit if order creation fails
-      await this.creditsService.addCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
+      await this.creditsService.addCredits(
+        userId,
+        APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+      );
       throw error;
     }
   }
 
   // Pledge to an existing order
-  async pledgeToOrder(userId: string, pledgeToOrderDto: PledgeToOrderDto): Promise<Order> {
+  async pledgeToOrder(
+    userId: string,
+    pledgeToOrderDto: PledgeToOrderDto,
+  ): Promise<Order> {
     // Check if user has enough credits
-    const hasEnoughCredits = await this.creditsService.useCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
+    const hasEnoughCredits = await this.creditsService.useCredits(
+      userId,
+      APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+    );
     if (!hasEnoughCredits) {
       throw new BadRequestException('Not enough credits');
     }
 
     try {
       // Use Redis Lua script for atomic operation
-      const result = await this.redisService.pledgeToOrder(
+      const result = await this.ordersRedisService.pledgeToOrder(
         pledgeToOrderDto.orderId,
         userId,
-        pledgeToOrderDto.pledgeAmount
+        pledgeToOrderDto.pledgeAmount,
       );
 
       if (!result.success) {
-        await this.creditsService.addCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
+        await this.creditsService.addCredits(
+          userId,
+          APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+        );
         await this.eventsService.handlePledgeFailure(userId, result.message);
         throw new BadRequestException(result.message);
       }
@@ -101,7 +130,7 @@ export class OrdersService {
           totalPledge: updatedOrder.totalPledge,
           totalUsers: updatedOrder.totalUsers,
           status: updatedOrder.status,
-        }
+        },
       );
 
       // Send event for successful pledge
@@ -116,44 +145,51 @@ export class OrdersService {
     } catch (error) {
       // If it's not already a BadRequestException, refund the credit
       if (!(error instanceof BadRequestException)) {
-        await this.creditsService.addCredits(userId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
+        await this.creditsService.addCredits(
+          userId,
+          APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+        );
       }
       throw error;
     }
   }
 
   // Get active orders near a location
-  async getActiveOrdersNear(getOrdersNearDto: GetOrdersNearDto): Promise<Order[]> {
-    return this.redisService.findOrdersNear(
+  async getActiveOrdersNear(
+    getOrdersNearDto: GetOrdersNearDto,
+  ): Promise<Order[]> {
+    return this.ordersRedisService.findOrdersNear(
       getOrdersNearDto.longitude,
       getOrdersNearDto.latitude,
-      getOrdersNearDto.radiusKm
+      getOrdersNearDto.radiusKm,
     );
   }
 
   // Get order status (with auth check)
   async getOrderStatus(userId: string, orderId: string): Promise<Order> {
     // Try to get from Redis first
-    let order = await this.redisService.getOrder(orderId);
+    let order = await this.ordersRedisService.getOrder(orderId);
 
     // If not in Redis, get from database
     if (!order) {
       order = await this.orderRepository.findOne({ where: { id: orderId } });
-      
+
       if (!order) {
         throw new NotFoundException('Order not found');
       }
-      
+
       // Don't re-add completed orders to Redis
       if (order.status !== OrderStatus.COMPLETED) {
         // Re-add to Redis with original expiry
-        await this.redisService.storeOrder(order);
+        await this.ordersRedisService.storeOrder(order);
       }
     }
 
     // Check if user is a pledger in this order
     if (!order.pledgeMap[userId]) {
-      throw new NotFoundException('Order not found or you are not a participant');
+      throw new NotFoundException(
+        'Order not found or you are not a participant',
+      );
     }
 
     // If order is not completed, hide the pledgers information
@@ -180,7 +216,9 @@ export class OrdersService {
   // Handle expired order
   async handleOrderExpiry(orderId: string): Promise<void> {
     // Get order from database
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
 
     if (!order) {
       return;
@@ -191,19 +229,31 @@ export class OrdersService {
     await this.orderRepository.save(order);
 
     // Remove from Redis
-    await this.redisService.deleteOrder(orderId);
+    await this.ordersRedisService.deleteOrder(orderId);
 
     // Refund credit to creator
-    await this.creditsService.addCredits(order.creatorId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
-    
+    await this.creditsService.addCredits(
+      order.creatorId,
+      APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+    );
+
     // Refund credits to all other pledgers
-    const pledgerIds = Object.keys(order.pledgeMap).filter(id => id !== order.creatorId);
+    const pledgerIds = Object.keys(order.pledgeMap).filter(
+      (id) => id !== order.creatorId,
+    );
     for (const pledgerId of pledgerIds) {
       try {
-        await this.creditsService.addCredits(pledgerId, APP_CONSTANTS.CREDIT_COST_PER_ACTION);
-        console.log(`Refunded ${APP_CONSTANTS.CREDIT_COST_PER_ACTION} credit to pledger ${pledgerId} for expired order ${orderId}`);
+        await this.creditsService.addCredits(
+          pledgerId,
+          APP_CONSTANTS.CREDIT_COST_PER_ACTION,
+        );
+        console.log(
+          `Refunded ${APP_CONSTANTS.CREDIT_COST_PER_ACTION} credit to pledger ${pledgerId} for expired order ${orderId}`,
+        );
       } catch (error) {
-        console.error(`Failed to refund credit to pledger ${pledgerId}: ${error.message}`);
+        console.error(
+          `Failed to refund credit to pledger ${pledgerId}: ${error.message}`,
+        );
       }
     }
 

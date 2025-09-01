@@ -8,11 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([User]),
-    AuthModule,
-    RedisModule,
-  ],
+  imports: [TypeOrmModule.forFeature([User]), AuthModule, RedisModule],
   controllers: [CreditsController],
   providers: [CreditsService, CashfreeService],
   exports: [CreditsService, CashfreeService],

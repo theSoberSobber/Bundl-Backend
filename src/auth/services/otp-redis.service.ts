@@ -7,9 +7,7 @@ import { APP_CONSTANTS } from '../../constants/app.constants';
 export class OtpRedisService {
   private readonly logger = new Logger(OtpRedisService.name);
 
-  constructor(
-    @InjectRedis() private readonly redis: Redis,
-  ) {}
+  constructor(@InjectRedis() private readonly redis: Redis) {}
 
   /**
    * Store the phone number associated with a transaction ID
@@ -18,7 +16,12 @@ export class OtpRedisService {
    */
   async storePhoneNumber(tid: string, phoneNumber: string): Promise<void> {
     const key = `${APP_CONSTANTS.REDIS_KEYS.OTP_PREFIX}${tid}:phone`;
-    await this.redis.set(key, phoneNumber, 'EX', APP_CONSTANTS.OTP_EXPIRY_SECONDS);
+    await this.redis.set(
+      key,
+      phoneNumber,
+      'EX',
+      APP_CONSTANTS.OTP_EXPIRY_SECONDS,
+    );
     this.logger.log(`Stored phone number ${phoneNumber} for TID: ${tid}`);
   }
 
@@ -42,4 +45,4 @@ export class OtpRedisService {
     await this.redis.del(key);
     this.logger.log(`Deleted phone number for TID: ${tid}`);
   }
-} 
+}
