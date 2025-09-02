@@ -33,12 +33,43 @@ export class AuthService {
     console.log(`Debug mode is ${this.isDebugMode ? 'enabled' : 'disabled'}`);
   }
 
+  // Check if a phone number is a dummy test account for Google Play Store closed testing
+  private isDummyTestAccount(phoneNumber: string): boolean {
+    // Remove any non-digit characters (like +, spaces, dashes, etc.)
+    const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
+    
+    // Check for different patterns:
+    // 1. Exactly 10 digits, all 9's: 9999999999
+    // 2. 12 digits starting with 91 and followed by 10 9's: 919999999999
+    // 3. 13 digits starting with 091 and followed by 10 9's: 0919999999999
+    
+    if (cleanPhoneNumber.length === 10 && /^9{10}$/.test(cleanPhoneNumber)) {
+      return true; // 9999999999
+    }
+    
+    if (cleanPhoneNumber.length === 12 && /^91(9{10})$/.test(cleanPhoneNumber)) {
+      return true; // 919999999999
+    }
+    
+    if (cleanPhoneNumber.length === 13 && /^091(9{10})$/.test(cleanPhoneNumber)) {
+      return true; // 0919999999999
+    }
+    
+    return false;
+  }
+
   // Send OTP to user's phone number
   async sendOtp(phoneNumber: string): Promise<{ tid: string }> {
-    if (this.isDebugMode) {
-      console.log(`[DEBUG] Sending fake OTP to ${phoneNumber}`);
+    const isDummyAccount = this.isDummyTestAccount(phoneNumber);
+
+    if (this.isDebugMode || isDummyAccount) {
+      const logPrefix = isDummyAccount ? '[DUMMY ACCOUNT]' : '[DEBUG]';
+      const tidPrefix = isDummyAccount ? 'dummy' : 'debug';
+      
+      console.log(`${logPrefix} Sending fake OTP to ${phoneNumber}`);
+      
       // Generate a random tid
-      const tid = `debug-${uuidv4()}`;
+      const tid = `${tidPrefix}-${uuidv4()}`;
 
       // Store the phone number in Redis using the transaction ID
       await this.otpRedisService.storePhoneNumber(tid, phoneNumber);
@@ -70,9 +101,13 @@ export class AuthService {
       );
     }
 
-    if (this.isDebugMode) {
-      console.log(`[DEBUG] Bypassing OTP verification for ${phoneNumber}`);
-      // In debug mode, skip the actual verification
+    // Check if this is a dummy account for Google Play Store closed testing
+    const isDummyAccount = this.isDummyTestAccount(phoneNumber);
+
+    if (this.isDebugMode || isDummyAccount) {
+      const logPrefix = isDummyAccount ? '[DUMMY ACCOUNT]' : '[DEBUG]';
+      console.log(`${logPrefix} Bypassing OTP verification for ${phoneNumber}`);
+      // Skip the actual verification for debug mode or dummy accounts
     } else {
       // Verify OTP with Orvio service
       const verification = await this.orvioService.verifyOtp(tid, otp);

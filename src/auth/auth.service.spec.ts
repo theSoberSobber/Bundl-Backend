@@ -83,4 +83,55 @@ describe('AuthService', () => {
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
+
+  describe('isDummyTestAccount', () => {
+    it('should return true for phone numbers with exactly 10 nines', () => {
+      // Access private method for testing using bracket notation
+      expect(service['isDummyTestAccount']('9999999999')).toBe(true);
+    });
+
+    it('should return true for phone numbers with country code and 10 nines', () => {
+      expect(service['isDummyTestAccount']('+919999999999')).toBe(true);
+      expect(service['isDummyTestAccount']('919999999999')).toBe(true);
+      expect(service['isDummyTestAccount']('0919999999999')).toBe(true);
+      expect(service['isDummyTestAccount']('+910919999999999')).toBe(false); // too long
+    });
+
+    it('should return true for phone numbers with formatting and 10 nines', () => {
+      expect(service['isDummyTestAccount']('+91-9999-999-999')).toBe(true);
+      expect(service['isDummyTestAccount']('+91 9999 999 999')).toBe(true);
+      expect(service['isDummyTestAccount']('91 9999999999')).toBe(true);
+    });
+
+    it('should return false for phone numbers with less than 10 nines', () => {
+      expect(service['isDummyTestAccount']('999999999')).toBe(false); // 9 nines
+      expect(service['isDummyTestAccount']('+91999999999')).toBe(false); // 9 nines
+      expect(service['isDummyTestAccount']('91999999999')).toBe(false); // 9 nines
+    });
+
+    it('should return false for phone numbers with more than 10 nines', () => {
+      expect(service['isDummyTestAccount']('99999999999')).toBe(false); // 11 nines
+      expect(service['isDummyTestAccount']('+9199999999999')).toBe(false); // 11 nines with country code
+      expect(service['isDummyTestAccount']('9199999999999')).toBe(false); // 11 nines with country code
+    });
+
+    it('should return false for regular phone numbers', () => {
+      expect(service['isDummyTestAccount']('9876543210')).toBe(false);
+      expect(service['isDummyTestAccount']('+919876543210')).toBe(false);
+      expect(service['isDummyTestAccount']('9123456789')).toBe(false);
+    });
+
+    it('should return false for phone numbers with mixed digits containing 9s', () => {
+      expect(service['isDummyTestAccount']('9999999998')).toBe(false);
+      expect(service['isDummyTestAccount']('8999999999')).toBe(false);
+      expect(service['isDummyTestAccount']('9899999999')).toBe(false);
+    });
+
+    it('should handle edge cases', () => {
+      expect(service['isDummyTestAccount']('')).toBe(false);
+      expect(service['isDummyTestAccount']('abc')).toBe(false);
+      expect(service['isDummyTestAccount']('+91')).toBe(false);
+      expect(service['isDummyTestAccount']('9')).toBe(false);
+    });
+  });
 });
