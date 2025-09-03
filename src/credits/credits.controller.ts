@@ -12,6 +12,7 @@ import {
   Query,
   ParseIntPipe,
   Logger,
+  RawBody,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,13 +20,13 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   CreateCreditOrderDto,
-  VerifyPaymentDto,
   CreditPackage,
 } from './dto/credits.dto';
-import { CashfreeService } from './services/cashfree.service';
+import { RevenueCatService, RevenueCatWebhookEvent } from './services/revenuecat.service';
 import { CreditsService } from './credits.service';
 
 @ApiTags('Credits')
@@ -34,9 +35,12 @@ export class CreditsController {
   private readonly logger = new Logger(CreditsController.name);
 
   constructor(
-    private readonly cashfreeService: CashfreeService,
+    private readonly revenueCatService: RevenueCatService,
     private readonly creditsService: CreditsService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.logger.log('Payment system: RevenueCat');
+  }
 
   @ApiOperation({ summary: 'Get available credit packages' })
   @ApiResponse({
@@ -47,7 +51,7 @@ export class CreditsController {
   })
   @Get('packages')
   getPackages() {
-    return this.cashfreeService.getCreditPackages();
+    return this.revenueCatService.getCreditPackages();
   }
 
   @ApiOperation({ summary: 'Get user credit balance' })
@@ -64,10 +68,10 @@ export class CreditsController {
     return { credits };
   }
 
-  @ApiOperation({ summary: 'Create a new payment order for credits' })
+  @ApiOperation({ summary: 'Get credit package info for mobile app purchase' })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Payment order created successfully',
+    description: 'Credit package information for Google Play purchase',
   })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -80,87 +84,57 @@ export class CreditsController {
       throw new BadRequestException('User not found');
     }
 
-    return this.cashfreeService.createOrder(
-      userId,
-      createOrderDto.credits,
-      user.phoneNumber,
-    );
+    const packages = this.revenueCatService.getCreditPackages();
+    const matchingPackage = packages.find(pkg => pkg.credits === createOrderDto.credits);
+    
+    if (!matchingPackage) {
+      throw new BadRequestException('Invalid credit package');
+    }
+    
+    return {
+      message: 'Use Google Play Billing directly from the app',
+      productId: matchingPackage.productId,
+      credits: matchingPackage.credits,
+      price: matchingPackage.price,
+      instructions: 'Complete purchase through Google Play in the mobile app'
+    };
   }
 
-  @ApiOperation({ summary: 'Check payment status (for client-side polling)' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Payment status for client-side use',
-  })
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
-  @Post('verify')
-  @HttpCode(HttpStatus.OK)
-  async verifyPayment(@Body() verifyPaymentDto: VerifyPaymentDto) {
-    const { orderId } = verifyPaymentDto;
-    const verificationResult = await this.cashfreeService.verifyOrder(orderId);
-    return verificationResult;
-  }
-
-  @ApiOperation({ summary: 'Handle webhook notifications from Cashfree' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Webhook processed' })
+  @ApiOperation({ summary: 'Handle webhook notifications from RevenueCat' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'RevenueCat webhook processed' })
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  async handleWebhook(
-    @Body() payload: any,
-    @Headers('x-webhook-timestamp') timestamp: string,
-    @Headers('x-webhook-signature') signature: string,
-    @Headers('x-webhook-version') version: string
+  async handleRevenueCatWebhook(
+    @RawBody() rawBody: Buffer,
+    @Headers('authorization') authHeader: string,
   ) {
-    this.logger.log(`Received webhook: ${payload.type}, Version: ${version}`);
+    this.logger.log('Received RevenueCat webhook');
     
-    // Verify webhook signature
-    const isValid = this.cashfreeService.verifyWebhookSignature(
-      payload,
-      signature,
-      timestamp
-    );
-
-    this.logger.log(`Webhook Payload ${JSON.stringify(payload, null, 2)}, ${timestamp}, ${signature}`);
-    
-    if (!isValid) {
-      this.logger.error('Invalid webhook signature received');
-      throw new BadRequestException('Invalid webhook signature');
+    try {
+      const payload = rawBody.toString('utf8');
+      
+      // Verify webhook authorization (RevenueCat best practice)
+      const isValid = this.revenueCatService.verifyWebhookAuthorization(authHeader);
+      
+      if (!isValid) {
+        this.logger.error('Invalid RevenueCat webhook authorization');
+        throw new BadRequestException('Invalid webhook authorization');
+      }
+      
+      const event: RevenueCatWebhookEvent = JSON.parse(payload);
+      this.logger.log(`Processing RevenueCat event: ${event.event.type} (${event.event.id}) for user ${event.event.app_user_id}`);
+      
+      // RevenueCat Best Practice: Process with deferred pattern (respond quickly <60s, defer heavy operations)
+      const result = await this.revenueCatService.processWebhookEvent(event);
+      
+      return {
+        success: result.success,
+        message: result.success ? 'Event processed successfully' : 'Event processing failed'
+      };
+    } catch (error) {
+      this.logger.error('Error processing RevenueCat webhook:', error);
+      throw new BadRequestException('Failed to process webhook');
     }
-    
-    const webhookType = payload.type;
-    const orderId = payload.data?.order?.order_id;
-    const paymentStatus = payload.data?.payment?.payment_status;
-    
-    this.logger.log(`Processing webhook type: ${webhookType}, Order ID: ${orderId}, Payment Status: ${paymentStatus}`);
-    
-    // Handle different webhook types
-    switch (webhookType) {
-      case 'PAYMENT_SUCCESS_WEBHOOK':
-        if (paymentStatus === 'SUCCESS') {
-          const processed = await this.cashfreeService.processPaymentAtomically(orderId);
-          return { 
-            success: true, 
-            message: processed ? 'Payment processed successfully' : 'Payment already processed'
-          };
-        }
-        break;
-        
-      case 'PAYMENT_FAILED_WEBHOOK':
-        // Log but don't process failed payments
-        this.logger.warn(`Payment failed for order ${orderId}: ${payload.data?.payment?.payment_message}`);
-        await this.cashfreeService.updateOrderStatus(orderId, 'FAILED');
-        return { success: true, message: 'Failed payment recorded' };
-        
-      case 'PAYMENT_USER_DROPPED_WEBHOOK':
-        // Log but don't process user-dropped payments
-        this.logger.warn(`User dropped payment for order ${orderId}`);
-        await this.cashfreeService.updateOrderStatus(orderId, 'DROPPED');
-        return { success: true, message: 'User dropped payment recorded' };
-    }
-    
-    // Default response for unhandled or unknown webhook types
-    return { success: true, message: 'Webhook received' };
   }
 
   @ApiOperation({ summary: 'Calculate price for credits purchase' })
@@ -172,7 +146,7 @@ export class CreditsController {
   @UseGuards(JwtAuthGuard)
   @Get('calculatePrice')
   async calculatePrice(@Query('credits', ParseIntPipe) credits: number) {
-    const totalAmount = this.cashfreeService.calculatePrice(credits);
+    const totalAmount = this.revenueCatService.calculatePrice(credits);
     
     return {
       credits,
@@ -182,7 +156,35 @@ export class CreditsController {
         '10-19': 0.8,  // ₹0.8 per credit for 10-19 credits
         '20+': 0.6     // ₹0.6 per credit for 20+ credits
       },
-      totalAmount
+      totalAmount,
+      paymentSystem: 'RevenueCat'
+    };
+  }
+
+  @ApiOperation({ summary: 'Get user purchase history' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns user purchase history',
+  })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('history')
+  async getPurchaseHistory(@Req() req, @Query('limit', ParseIntPipe) limit = 10) {
+    const userId = req.user.id;
+    return await this.revenueCatService.getUserPurchaseHistory(userId, limit);
+  }
+
+  @ApiOperation({ summary: 'Get system health and configuration' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'System health check',
+  })
+  @Get('health')
+  getHealth() {
+    return {
+      paymentSystem: 'RevenueCat',
+      revenueCatConfigured: this.revenueCatService.isConfigured(),
+      status: 'healthy'
     };
   }
 }

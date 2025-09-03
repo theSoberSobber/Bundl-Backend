@@ -29,16 +29,6 @@ export class CreateCreditOrderDto {
   currency?: string = 'INR';
 }
 
-export class VerifyPaymentDto {
-  @ApiProperty({
-    description: 'Order ID received from Cashfree',
-    example: 'order_123456789',
-  })
-  @IsString()
-  @IsNotEmpty()
-  orderId: string;
-}
-
 export class CreditPackage {
   @ApiProperty({
     description: 'Credit package ID',
@@ -54,7 +44,7 @@ export class CreditPackage {
 
   @ApiProperty({
     description: 'Price in INR',
-    example: 50,
+    example: 5,
   })
   price: number;
 
@@ -69,4 +59,13 @@ export class CreditPackage {
     example: '5 credits for creating or pledging to orders',
   })
   description: string;
+
+  @ApiProperty({
+    description: 'Google Play product ID (for RevenueCat)',
+    example: 'bundle_5_credits',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  productId?: string;
 }

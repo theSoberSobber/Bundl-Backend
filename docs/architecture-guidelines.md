@@ -89,7 +89,7 @@ src/services/
 - Has controller (`/credits/*` endpoints)
 - Has business logic (credit transactions)
 - Has DTOs (payment requests)
-- Contains payment-related services (`cashfree.service.ts`)
+- Contains payment-related services (`revenuecat.service.ts`)
 
 #### ❌ **Bad**: Old PaymentsModule (removed)
 - Empty controller and service
