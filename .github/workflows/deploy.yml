@@ -36,12 +36,29 @@ jobs:
           git fetch origin "refs/heads/${BR}:refs/heads/${BR}" --depth=1 || git fetch origin "${BR}"
           git checkout "${BR}"
 
-      - name: Install python yaml parser (pyyaml)
+      - name: Clone envs repository and setup environment variables
+        env:
+          PAT: ${{ secrets.PAT }}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyyaml
+          set -euo pipefail
+          if [ -z "${PAT:-}" ]; then
+            echo "ERROR: Set repository secret PAT for accessing envs repo." >&2
+            exit 1
+          fi
+          
+          # Clone envs repo using PAT
+          git clone https://${PAT}@github.com/theSoberSobber/envs.git envs-repo
+          echo "Successfully cloned envs repository"
+          
+          # Install PyYAML for the script
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pyyaml
+          
+          # Run the centralized env vars setup script
+          chmod +x envs-repo/init_env_vars.sh
+          envs-repo/init_env_vars.sh .github/CD.yml
 
-      - name: Parse .github/CD.yml (set defaults; produce SSH repo URLs)
+      - name: Parse .github/CD.yml and setup deployment config
         id: parse_cd
         run: |
           python - <<'PY'
@@ -60,7 +77,9 @@ jobs:
             "env_subpath":"",      # path inside envs repo like "prod" or "" for root
             "env_file_name":".env",
             # optional override for app repo SSH url
-            "app_repo_ssh_url":""
+            "app_repo_ssh_url":"",
+            # list of env vars this app needs from the envs repo
+            "required_env_vars":["TAILSCALE_AUTHKEY", "SSH_PASSWORD"]
           }
 
           for k,v in defaults.items():
@@ -110,12 +129,10 @@ jobs:
           PY
 
       - name: Prepare runner and bring up Tailscale
-        env:
-          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           set -euo pipefail
           if [ -z "${TAILSCALE_AUTHKEY:-}" ]; then
-            echo "ERROR: Set repository secret TAILSCALE_AUTHKEY." >&2
+            echo "ERROR: TAILSCALE_AUTHKEY not found in environment variables." >&2
             exit 1
           fi
           curl -fsSL https://tailscale.com/install.sh | sh
@@ -137,11 +154,10 @@ jobs:
           fi
           chmod +x .github/deploy/remote_deploy.sh
 
-      - name: Stream & execute remote deploy script (via sshpass, using GH secret for password)
+      - name: Stream & execute remote deploy script (via sshpass, using env var for password)
         env:
           SERVER_USER: ${{ steps.parse_cd.outputs.server_user }}
           SERVER_HOST: ${{ steps.parse_cd.outputs.server_host }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           DEPLOYMENTS_DIR: ${{ steps.parse_cd.outputs.deployments_dir }}
           APP_FOLDER_INPUT: ${{ steps.parse_cd.outputs.app_folder }}
           ENV_SUBPATH: ${{ steps.parse_cd.outputs.env_subpath }}
