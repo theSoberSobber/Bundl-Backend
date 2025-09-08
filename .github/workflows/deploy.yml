@@ -146,7 +146,6 @@ jobs:
         env:
           SERVER_USER: ${{ steps.parse_cd.outputs.server_user }}
           SERVER_HOST: ${{ steps.parse_cd.outputs.server_host }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           DEPLOYMENTS_DIR: ${{ steps.parse_cd.outputs.deployments_dir }}
           APP_FOLDER_INPUT: ${{ steps.parse_cd.outputs.app_folder }}
           ENV_SUBPATH: ${{ steps.parse_cd.outputs.env_subpath }}
