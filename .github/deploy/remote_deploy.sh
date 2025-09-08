@@ -12,6 +12,7 @@ set -euo pipefail
 : "${ENV_SUBPATH:=}"
 : "${ENV_FILE_NAME:=.env}"
 : "${COMPOSE_FILE:=docker-compose.yml}"
+: "${BRANCH_NAME:=}"      # optional branch name to clone
 
 APP_DIR="${DEPLOYMENTS_DIR%/}/${APP_FOLDER}"
 ENV_DIR="${DEPLOYMENTS_DIR%/}/envs"
@@ -40,7 +41,12 @@ rm -rf "${APP_DIR}"
 
 echo "==> Cloning app repo (${APP_REPO_URL}) into ${APP_DIR}"
 # Use SSH-based clone (server must have access via SSH key / deploy key)
-git clone --depth=1 "${APP_REPO_URL}" "${APP_DIR}"
+if [ -n "${BRANCH_NAME}" ]; then
+  echo "Cloning branch ${BRANCH_NAME}"
+  git clone --depth=1 --branch "${BRANCH_NAME}" "${APP_REPO_URL}" "${APP_DIR}"
+else
+  git clone --depth=1 "${APP_REPO_URL}" "${APP_DIR}"
+fi
 
 echo "==> Removing old envs clone: ${ENV_DIR}"
 rm -rf "${ENV_DIR}"
