@@ -12,6 +12,7 @@ set -euo pipefail
 : "${ENV_SUBPATH:=}"
 : "${ENV_FILE_NAME:=.env}"
 : "${COMPOSE_FILE:=docker-compose.yml}"
+: "${BRANCH_NAME:=}"      # optional branch name to clone
 
 APP_DIR="${DEPLOYMENTS_DIR%/}/${APP_FOLDER}"
 ENV_DIR="${DEPLOYMENTS_DIR%/}/envs"
@@ -40,7 +41,12 @@ rm -rf "${APP_DIR}"
 
 echo "==> Cloning app repo (${APP_REPO_URL}) into ${APP_DIR}"
 # Use SSH-based clone (server must have access via SSH key / deploy key)
-git clone --depth=1 "${APP_REPO_URL}" "${APP_DIR}"
+if [ -n "${BRANCH_NAME}" ]; then
+  echo "Cloning branch ${BRANCH_NAME}"
+  git clone --depth=1 --branch "${BRANCH_NAME}" "${APP_REPO_URL}" "${APP_DIR}"
+else
+  git clone --depth=1 "${APP_REPO_URL}" "${APP_DIR}"
+fi
 
 echo "==> Removing old envs clone: ${ENV_DIR}"
 rm -rf "${ENV_DIR}"
@@ -55,18 +61,34 @@ else
   SRC_DIR="${ENV_DIR%/}"
 fi
 
-DST_DIR="${APP_DIR%/}"
+PROJECT_ROOT="${APP_DIR%/}"
 
-echo "==> Copying contents from envs source dir: ${SRC_DIR} -> ${DST_DIR}"
+echo "==> Copying environment files using environment-specific copy script"
 
+# Check if the environment directory exists
 if [ ! -d "${SRC_DIR}" ]; then
   echo "ERROR: Source env directory not found: ${SRC_DIR}" >&2
   ls -la "${ENV_DIR}" || true
   exit 1
 fi
 
-# Copy all contents (including hidden files) from SRC_DIR into app root.
-cp -a "${SRC_DIR%/}/." "${DST_DIR%/}/"
+# Look for copy.sh script in the environment directory
+COPY_SCRIPT="${SRC_DIR}/copy.sh"
+
+if [ -f "${COPY_SCRIPT}" ]; then
+  echo "==> Found environment-specific copy script: ${COPY_SCRIPT}"
+  chmod +x "${COPY_SCRIPT}"
+  "${COPY_SCRIPT}" "${PROJECT_ROOT}"
+elif [ -f "${ENV_DIR}/copy_env_files.sh" ]; then
+  echo "==> Using generic copy_env_files.sh script"
+  chmod +x "${ENV_DIR}/copy_env_files.sh"
+  "${ENV_DIR}/copy_env_files.sh" "${ENV_SUBPATH}" "${PROJECT_ROOT}"
+else
+  echo "==> No copy script found, falling back to copying all contents"
+  echo "    Copying from: ${SRC_DIR} -> ${PROJECT_ROOT}"
+  # Fallback: Copy all contents (including hidden files) from SRC_DIR into app root.
+  cp -a "${SRC_DIR%/}/." "${PROJECT_ROOT%/}/"
+fi
 
 # Run docker compose up --build -d in the app dir (using sudo)
 cd "${APP_DIR}"

@@ -197,28 +197,48 @@ Content-Type: application/json
 }
 
 Response: 200 OK
+```json
 {
-    "orderId": "...",
-    "sessionId": "...",  // Cashfree payment session ID
-    "orderAmount": 1000
+    "message": "Use Google Play Billing directly from the app",
+    "productId": "bundle_10_credits",
+    "credits": 10,
+    "price": "₹8.00",
+    "instructions": "Complete purchase through Google Play in the mobile app"
 }
 ```
 
-### 2. Process Payment
-- Use the Cashfree Android SDK to process payment using the `sessionId`
-- Follow [Cashfree Android SDK Documentation](https://docs.cashfree.com/docs/android-sdk)
+### 2. Process Payment via Google Play Billing
+- Use Google Play Billing Client to process payment using the `productId`
+- Follow [Google Play Billing Documentation](https://developer.android.com/google/play/billing)
+- RevenueCat SDK handles billing integration automatically
 
-### 3. Verify Payment Status
+### 3. Payment Verification
+Payment verification happens automatically via RevenueCat webhooks.
+The backend will receive webhooks when purchases are completed and credits will be awarded automatically.
+
 ```http
-GET /credits/orderStatus/:orderId
+GET /credits/history
 Authorization: Bearer <access_token>
 
 Response: 200 OK
 {
-    "status": "PAID|PENDING|FAILED",
-    "credits": 10,
-    "amount": 1000
+    "purchases": [
+        {
+            "id": "...",
+            "credits": 10,
+            "amount": "₹8.00",
+            "date": "2023-12-01T10:00:00Z",
+            "status": "completed"
+        }
+    ]
 }
+```
+
+## Additional Notes
+
+RevenueCat handles all payment processing and validation automatically.
+The backend receives webhooks for successful purchases and awards credits accordingly.
+No manual payment verification is required with the RevenueCat integration.
 ```
 
 ## Push Notifications

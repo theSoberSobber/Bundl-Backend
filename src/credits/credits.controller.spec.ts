@@ -1,17 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CreditsController } from './credits.controller';
-import { CashfreeService } from './services/cashfree.service';
+import { RevenueCatService } from './services/revenuecat.service';
 import { CreditsService } from './credits.service';
+import { ConfigService } from '@nestjs/config';
 
 // Mock services
-const mockCashfreeService = {
-  createOrder: jest.fn(),
-  verifyWebhook: jest.fn(),
+const mockRevenueCatService = {
+  getCreditPackages: jest.fn(),
   calculatePrice: jest.fn(),
+  verifyWebhookAuthorization: jest.fn(),
+  processWebhookEvent: jest.fn(),
+  getUserPurchaseHistory: jest.fn(),
+  isConfigured: jest.fn(),
 };
 
 const mockCreditsService = {
   getCredits: jest.fn(),
+  findUserById: jest.fn(),
+};
+
+const mockConfigService = {
+  get: jest.fn(),
 };
 
 describe('CreditsController', () => {
@@ -22,12 +31,16 @@ describe('CreditsController', () => {
       controllers: [CreditsController],
       providers: [
         {
-          provide: CashfreeService,
-          useValue: mockCashfreeService,
+          provide: RevenueCatService,
+          useValue: mockRevenueCatService,
         },
         {
           provide: CreditsService,
           useValue: mockCreditsService,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();

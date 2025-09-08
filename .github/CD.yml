@@ -1,7 +1,7 @@
 # .github/CD.yml
 #
 # Used by .github/workflows/deploy.yml
-# Do NOT put passwords here — use repo secret: secrets.SSH_PASSWORD
+# Do NOT put passwords here — they are read from the envs repo
 #
 server_user: pavit                   # remote SSH user (default used by workflow)
 server_host: 100.112.185.9           # remote Tailscale IP / hostname
@@ -23,4 +23,10 @@ env_file_name: .env                  # only relevant if you later switch to copy
 # If empty, workflow attempts to convert local origin -> SSH automatically.
 # Example: git@github.com:your-org/your-app.git
 app_repo_ssh_url: "git@github.com:theSoberSobber/Bundl-Backend.git"                 # optional override
+
+# List of environment variables this app needs from the envs repo's env_vars/ directory
+# These will be read from envs repo and made available to the workflow
+required_env_vars:
+  - TAILSCALE_AUTHKEY
+  - SSH_PASSWORD
 

@@ -85,14 +85,7 @@ export class AppModule implements OnModuleInit {
         // Debug
         DEBUG_ENABLED: this.configService.getOrThrow('DEBUG_ENABLED'),
 
-        // Cashfree
-        CASHFREE_CLIENT_ID: this.configService.getOrThrow('CASHFREE_CLIENT_ID'),
-        CASHFREE_CLIENT_SECRET: this.configService.getOrThrow(
-          'CASHFREE_CLIENT_SECRET',
-        ),
-        CASHFREE_ENVIRONMENT: this.configService.getOrThrow(
-          'CASHFREE_ENVIRONMENT',
-        ),
+        // Application
         APP_URL: this.configService.getOrThrow('APP_URL'),
 
         // Firebase
