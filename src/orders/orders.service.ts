@@ -360,7 +360,17 @@ export class OrdersService {
 
   // Handle expired order
   async handleOrderExpiry(orderId: string): Promise<void> {
-    // Get order from database
+    // Use atomic expiry to remove from Redis atomically FIRST
+    // This prevents race conditions where users could pledge during expiry
+    const wasRemoved = await this.ordersRedisService.atomicExpireOrder(orderId);
+    
+    if (!wasRemoved) {
+      console.log(`Order ${orderId} was already removed from Redis`);
+      return;
+    }
+
+    // Get order from database AFTER atomic removal to get final participant data for refunds
+    // This ensures we refund all users who were able to pledge before expiry
     const order = await this.orderRepository.findOne({
       where: { id: orderId },
     });
@@ -369,12 +379,9 @@ export class OrdersService {
       return;
     }
 
-    // Update order status
+    // Update order status in database
     order.status = OrderStatus.EXPIRED;
     await this.orderRepository.save(order);
-
-    // Remove from Redis
-    await this.ordersRedisService.deleteOrder(orderId);
 
     // Refund credit to creator
     await this.creditsService.addCredits(

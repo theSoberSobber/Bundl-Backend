@@ -50,6 +50,11 @@ export class OrdersRedisService implements OnModuleInit {
       order.latitude,
       key,
     );
+
+    // Create participants set and add creator
+    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${order.id}:participants`;
+    await this.redis.sadd(participantsKey, order.creatorId);
+    await this.redis.expire(participantsKey, expirySeconds);
   }
 
   // Get order by ID
@@ -67,12 +72,14 @@ export class OrdersRedisService implements OnModuleInit {
   // Delete order (used when completed)
   async deleteOrder(orderId: string): Promise<void> {
     const key = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`;
+    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`;
 
     // Remove from geo index
     await this.redis.zrem(APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY, key);
 
-    // Delete the order
+    // Delete the order and participants
     await this.redis.del(key);
+    await this.redis.del(participantsKey);
   }
 
   // Find orders near a location
@@ -112,6 +119,7 @@ export class OrdersRedisService implements OnModuleInit {
   ): Promise<{ success: boolean; message: string; updatedOrder?: Order }> {
     const script = `
       local key = KEYS[1]
+      local participantsKey = KEYS[2]
       local userId = ARGV[1]
       local pledgeAmount = tonumber(ARGV[2])
       
@@ -153,6 +161,8 @@ export class OrdersRedisService implements OnModuleInit {
       order.totalPledge = orderPledge + pledgeAmount
       if isNewUser then
         order.totalUsers = tonumber(order.totalUsers or 0) + 1
+        -- Add user to participants set
+        redis.call('SADD', participantsKey, userId)
       end
       
       -- Check if order is now completed
@@ -164,10 +174,11 @@ export class OrdersRedisService implements OnModuleInit {
       local updatedOrder = cjson.encode(order)
       redis.call('SET', key, updatedOrder)
       
-      -- If completed, remove from geo index and delete the order
+      -- If completed, remove from geo index and delete the order and participants
       if order.status == 'COMPLETED' then
         redis.call('ZREM', 'orders:geo', key)
         redis.call('DEL', key)
+        redis.call('DEL', participantsKey)
       end
       
       return {true, 'Pledge successful', updatedOrder}
@@ -176,8 +187,9 @@ export class OrdersRedisService implements OnModuleInit {
     try {
       const result = (await this.redis.eval(
         script,
-        1,
+        2, // Now using 2 keys
         `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`,
+        `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`,
         userId,
         pledgeAmount.toString(),
       )) as [boolean, string, string];
@@ -194,5 +206,56 @@ export class OrdersRedisService implements OnModuleInit {
     } catch (error: any) {
       return { success: false, message: `Error: ${error.message}` };
     }
+  }
+
+  // === PARTICIPANT MANAGEMENT FOR CHAT ===
+  
+  // Get all participants for an order (creator + pledgers)
+  async getOrderParticipants(orderId: string): Promise<string[]> {
+    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`;
+    return await this.redis.smembers(participantsKey);
+  }
+
+  // Check if user is a participant (for chat authorization)
+  async isParticipant(orderId: string, userId: string): Promise<boolean> {
+    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`;
+    const result = await this.redis.sismember(participantsKey, userId);
+    return result === 1;
+  }
+
+  // Extend participants set TTL (when order completes)
+  async extendParticipantsTTL(orderId: string, additionalSeconds: number): Promise<void> {
+    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`;
+    await this.redis.expire(participantsKey, additionalSeconds);
+  }
+
+  // Atomic order expiry to prevent race conditions
+  async atomicExpireOrder(orderId: string): Promise<string[]> {
+    const script = `
+      local orderKey = KEYS[1]
+      local participantsKey = KEYS[2]  
+      local geoKey = KEYS[3]
+      
+      -- Get participants before cleanup
+      local participants = redis.call('SMEMBERS', participantsKey)
+      
+      -- Atomic cleanup: Remove all traces of the order
+      redis.call('DEL', orderKey)           -- Remove order data
+      redis.call('DEL', participantsKey)   -- Remove participants
+      redis.call('ZREM', geoKey, orderKey) -- Remove from geo index
+      
+      -- Return participant list for credit refund
+      return participants
+    `;
+    
+    const participants = (await this.redis.eval(
+      script,
+      3,
+      `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`,
+      `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`,
+      APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY
+    )) as string[];
+    
+    return participants || [];
   }
 }
