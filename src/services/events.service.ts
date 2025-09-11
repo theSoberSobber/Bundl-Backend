@@ -4,6 +4,7 @@ import { User } from '../entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FcmService } from './fcm/fcm.service';
+import { ChatEventsService } from '../chat/chat-events.service';
 
 @Injectable()
 export class EventsService {
@@ -11,10 +12,18 @@ export class EventsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly fcmService: FcmService,
+    private readonly chatEventsService: ChatEventsService,
   ) {}
 
   // Handle successful pledge event
   async handleSuccessfulPledge(order: Order, userId: string): Promise<void> {
+    // Send chat notification for user joining order
+    try {
+      await this.chatEventsService.onUserJoinedOrder(order.id, userId);
+    } catch (error) {
+      console.warn(`Failed to send chat notification for user joining order ${order.id}: ${error.message}`);
+    }
+
     // Get all users involved in the order except the current user
     const userIds = Object.keys(order.pledgeMap).filter((id) => id !== userId);
 
@@ -74,6 +83,13 @@ export class EventsService {
 
   // Handle order expired event
   async handleOrderExpired(order: Order): Promise<void> {
+    // Send chat notification for order expiry
+    try {
+      await this.chatEventsService.onOrderExpired(order.id, 'Order expired');
+    } catch (error) {
+      console.warn(`Failed to send chat notification for expired order ${order.id}: ${error.message}`);
+    }
+
     const userIds = Object.keys(order.pledgeMap);
 
     if (userIds.length === 0) {
@@ -122,6 +138,41 @@ export class EventsService {
         reason,
       },
     );
+  }
+
+  // Handle chat message FCM notifications (pure side effects)
+  async handleChatMessage(
+    offlineParticipantIds: string[], 
+    messageData: {
+      orderId: string;
+      message: string;
+      senderName: string;
+      messageType: string;
+    }
+  ): Promise<void> {
+    if (offlineParticipantIds.length === 0) {
+      return;
+    }
+
+    // Get users with FCM tokens
+    const users = await this.userRepository.find({
+      where: offlineParticipantIds.map((id) => ({ id })),
+    });
+
+    // Send notifications to users with FCM tokens
+    for (const user of users) {
+      if (user.fcmToken) {
+        await this.sendPushNotification(
+          user.fcmToken,
+          `New message from ${messageData.senderName}`,
+          messageData.message,
+          {
+            orderId: messageData.orderId,
+            eventType: messageData.messageType,
+          },
+        );
+      }
+    }
   }
 
   // Send push notification using FCM
