@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bundl Chat Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .auth-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            background: #f9f9f9;
+        }
+        
+        .chat-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        
+        .message-area {
+            height: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+            background: #fafafa;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        .message.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .message.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .message.info {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .message.chat {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+        
+        input, button {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            background: #2196f3;
+            color: white;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #1976d2;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .status.connected {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+        
+        .status.disconnected {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+        
+        .status.connecting {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Bundl Chat System Test</h1>
+        
+        <div class="auth-section">
+            <h3>📱 Authentication</h3>
+            <p><strong>Note:</strong> You need a valid JWT token from Bundl backend to test chat.</p>
+            <input type="text" id="tokenInput" placeholder="Paste your JWT token here..." style="width: 400px;">
+            <button onclick="connectWebSocket()">Connect to Chat</button>
+            <button onclick="disconnectWebSocket()">Disconnect</button>
+            
+            <div id="connectionStatus" class="status disconnected">
+                ❌ Disconnected
+            </div>
+        </div>
+        
+        <div class="chat-section">
+            <h3>💬 Chat Testing</h3>
+            
+            <div>
+                <input type="text" id="orderIdInput" placeholder="Order ID" style="width: 200px;">
+                <button onclick="joinOrder()" id="joinBtn" disabled>Join Order Chat</button>
+                <button onclick="leaveOrder()" id="leaveBtn" disabled>Leave Order</button>
+            </div>
+            
+            <div class="message-area" id="messageArea"></div>
+            
+            <div>
+                <input type="text" id="messageInput" placeholder="Type your message..." style="width: 400px;">
+                <button onclick="sendMessage()" id="sendBtn" disabled>Send Message</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentOrderId = null;
+        
+        function updateStatus(message, type) {
+            const status = document.getElementById('connectionStatus');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        function addMessage(message, type = 'info') {
+            const area = document.getElementById('messageArea');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            area.appendChild(div);
+            area.scrollTop = area.scrollHeight;
+        }
+        
+        function updateButtons() {
+            const connected = ws && ws.readyState === WebSocket.OPEN;
+            document.getElementById('joinBtn').disabled = !connected;
+            document.getElementById('leaveBtn').disabled = !connected || !currentOrderId;
+            document.getElementById('sendBtn').disabled = !connected || !currentOrderId;
+        }
+        
+        function connectWebSocket() {
+            const token = document.getElementById('tokenInput').value.trim();
+            
+            if (!token) {
+                addMessage('❌ Please enter a JWT token', 'error');
+                return;
+            }
+            
+            if (ws) {
+                ws.close();
+            }
+            
+            updateStatus('🔄 Connecting...', 'connecting');
+            addMessage('🔄 Connecting to WebSocket...', 'info');
+            
+            // Connect with token as query parameter
+            ws = new WebSocket(`ws://localhost:3002/chat?token=${encodeURIComponent(token)}`);
+            
+            ws.onopen = function() {
+                updateStatus('✅ Connected', 'connected');
+                addMessage('✅ WebSocket connected successfully!', 'success');
+                updateButtons();
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    switch(data.type) {
+                        case 'auth_success':
+                            addMessage(`🔐 Authenticated as user: ${data.userId}`, 'success');
+                            break;
+                            
+                        case 'join_success':
+                            addMessage(`🚪 Successfully joined order: ${data.orderId}`, 'success');
+                            currentOrderId = data.orderId;
+                            
+                            // Display debug info if available
+                            if (data.debug) {
+                                addMessage(`🐛 [DEBUG] Participants: [${data.debug.participants.join(', ')}]`, 'info');
+                                addMessage(`🐛 [DEBUG] Participant count: ${data.debug.participantCount}, TTL: ${data.debug.ttlSeconds}s`, 'info');
+                            }
+                            
+                            updateButtons();
+                            break;
+                            
+                        case 'chat_history':
+                            addMessage(`📖 Received ${data.messages.length} historical messages`, 'info');
+                            data.messages.forEach(msg => {
+                                addMessage(`${msg.username}: ${msg.message}`, 'chat');
+                            });
+                            break;
+                            
+                        case 'new_message':
+                            addMessage(`${data.username}: ${data.message}`, 'chat');
+                            break;
+                            
+                        case 'message_sent':
+                            addMessage(`✅ Message sent (ID: ${data.messageId})`, 'success');
+                            break;
+                            
+                        case 'leave_success':
+                            addMessage(`📤 Left order: ${data.orderId}`, 'info');
+                            currentOrderId = null;
+                            updateButtons();
+                            break;
+                            
+                        case 'error':
+                            addMessage(`❌ Error: ${data.message}`, 'error');
+                            
+                            // Display debug info if available in error
+                            if (data.debug) {
+                                addMessage(`🐛 [DEBUG ERROR] Participants: [${data.debug.participants.join(', ')}]`, 'info');
+                                addMessage(`🐛 [DEBUG ERROR] Current User: ${data.debug.currentUser}, Is Participant: ${data.debug.isParticipant}`, 'info');
+                                addMessage(`🐛 [DEBUG ERROR] Participant count: ${data.debug.participantCount}, TTL: ${data.debug.ttlSeconds}s`, 'info');
+                            }
+                            break;
+                            
+                        default:
+                            addMessage(`📨 Unknown message: ${JSON.stringify(data)}`, 'info');
+                    }
+                } catch (e) {
+                    addMessage(`📨 Raw message: ${event.data}`, 'info');
+                }
+            };
+            
+            ws.onerror = function(error) {
+                addMessage(`❌ WebSocket error: ${error}`, 'error');
+                updateStatus('❌ Error', 'disconnected');
+                updateButtons();
+            };
+            
+            ws.onclose = function(event) {
+                addMessage(`👋 WebSocket closed (Code: ${event.code}, Reason: ${event.reason})`, 'info');
+                updateStatus('❌ Disconnected', 'disconnected');
+                currentOrderId = null;
+                updateButtons();
+            };
+        }
+        
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function joinOrder() {
+            const orderId = document.getElementById('orderIdInput').value.trim();
+            
+            if (!orderId) {
+                addMessage('❌ Please enter an Order ID', 'error');
+                return;
+            }
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('❌ WebSocket not connected', 'error');
+                return;
+            }
+            
+            const message = {
+                event: 'join_order',
+                data: { orderId: orderId }
+            };
+            
+            addMessage(`🚪 Attempting to join order: ${orderId}`, 'info');
+            ws.send(JSON.stringify(message));
+        }
+        
+        function leaveOrder() {
+            if (!currentOrderId) {
+                addMessage('❌ Not in any order chat', 'error');
+                return;
+            }
+            
+            const message = {
+                event: 'leave_order',
+                data: { orderId: currentOrderId }
+            };
+            
+            addMessage(`📤 Leaving order: ${currentOrderId}`, 'info');
+            ws.send(JSON.stringify(message));
+        }
+        
+        function sendMessage() {
+            const messageText = document.getElementById('messageInput').value.trim();
+            
+            if (!messageText) {
+                addMessage('❌ Please enter a message', 'error');
+                return;
+            }
+            
+            if (!currentOrderId) {
+                addMessage('❌ Not in any order chat', 'error');
+                return;
+            }
+            
+            const message = {
+                event: 'send_message',
+                data: {
+                    orderId: currentOrderId,
+                    message: messageText
+                }
+            };
+            
+            addMessage(`📤 Sending: ${messageText}`, 'info');
+            ws.send(JSON.stringify(message));
+            
+            // Clear input
+            document.getElementById('messageInput').value = '';
+        }
+        
+        // Allow Enter key to send messages
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Initialize
+        updateButtons();
+        addMessage('🚀 Chat test client loaded. Enter JWT token and click Connect.', 'info');
+    </script>
+</body>
+</html>

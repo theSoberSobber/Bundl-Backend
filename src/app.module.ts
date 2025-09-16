@@ -11,6 +11,7 @@ import { OrdersModule } from './orders/orders.module';
 import { SharedModule } from './shared/shared.module';
 import { CreditsModule } from './credits/credits.module';
 import { RedisModule } from './redis/redis.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { RedisModule } from './redis/redis.module';
     OrdersModule,
     SharedModule,
     CreditsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

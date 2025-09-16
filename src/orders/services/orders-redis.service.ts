@@ -174,11 +174,15 @@ export class OrdersRedisService implements OnModuleInit {
       local updatedOrder = cjson.encode(order)
       redis.call('SET', key, updatedOrder)
       
-      -- If completed, remove from geo index and delete the order and participants
+      -- If completed, remove from geo index, delete order but keep participants for 5min grace period
       if order.status == 'COMPLETED' then
         redis.call('ZREM', 'orders:geo', key)
         redis.call('DEL', key)
-        redis.call('DEL', participantsKey)
+        -- Keep participants for 5 minutes (300 seconds) for chat grace period
+        redis.call('EXPIRE', participantsKey, 300)
+        -- Also keep chat data for the same grace period
+        local chatKey = 'chat:' .. orderId
+        redis.call('EXPIRE', chatKey, 300)
       end
       
       return {true, 'Pledge successful', updatedOrder}
@@ -235,6 +239,7 @@ export class OrdersRedisService implements OnModuleInit {
       local orderKey = KEYS[1]
       local participantsKey = KEYS[2]  
       local geoKey = KEYS[3]
+      local chatKey = KEYS[4]
       
       -- Get participants before cleanup
       local participants = redis.call('SMEMBERS', participantsKey)
@@ -242,6 +247,7 @@ export class OrdersRedisService implements OnModuleInit {
       -- Atomic cleanup: Remove all traces of the order
       redis.call('DEL', orderKey)           -- Remove order data
       redis.call('DEL', participantsKey)   -- Remove participants
+      redis.call('DEL', chatKey)           -- Remove chat data
       redis.call('ZREM', geoKey, orderKey) -- Remove from geo index
       
       -- Return participant list for credit refund
@@ -250,10 +256,11 @@ export class OrdersRedisService implements OnModuleInit {
     
     const participants = (await this.redis.eval(
       script,
-      3,
+      4,
       `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`,
       `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`,
-      APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY
+      APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY,
+      `chat:${orderId}`
     )) as string[];
     
     return participants || [];

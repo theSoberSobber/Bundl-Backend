@@ -20,6 +20,6 @@ import { SharedModule } from '../shared/shared.module';
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersRedisService],
-  exports: [OrdersService],
+  exports: [OrdersService, OrdersRedisService],
 })
 export class OrdersModule {}
