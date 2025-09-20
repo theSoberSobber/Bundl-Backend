@@ -5,7 +5,7 @@ export const APP_CONSTANTS = {
   CREDIT_COST_PER_ACTION: 1,
 
   // Orders
-  DEFAULT_ORDER_EXPIRY_SECONDS: 30, // 30 seconds (for testing)
+  DEFAULT_ORDER_EXPIRY_SECONDS: 600, // 10 minutes
   DEFAULT_SEARCH_RADIUS_KM: 5,
 
   // OTP
