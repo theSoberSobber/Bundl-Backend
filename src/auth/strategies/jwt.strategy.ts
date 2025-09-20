@@ -20,7 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(request: Request, payload: any) {
-    console.log(`JWT Strategy validating token for user ${payload.sub}`);
+    // console.log(`JWT Strategy validating token for user ${payload.sub}`);
 
     // Extract token from the request
     const authHeader = request.headers.authorization;
@@ -31,20 +31,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Authentication required');
     }
 
-    console.log(
-      `Checking if token is blacklisted: ${token.substring(0, 20)}...`,
-    );
+    // console.log(
+    //   `Checking if token is blacklisted: ${token.substring(0, 20)}...`,
+    // );
 
     // Always check if the token is blacklisted
     const isBlacklisted = await this.authService.isTokenBlacklisted(token);
-    console.log(`Is token blacklisted: ${isBlacklisted}`);
+    // console.log(`Is token blacklisted: ${isBlacklisted}`);
 
     if (isBlacklisted) {
       console.log('Token is blacklisted, rejecting request');
       throw new UnauthorizedException('Authentication required');
     }
 
-    console.log('Token is valid, proceeding with request');
+    // console.log('Token is valid, proceeding with request');
 
     // Return the payload data
     return {

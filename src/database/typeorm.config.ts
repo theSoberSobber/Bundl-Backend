@@ -20,5 +20,5 @@ export default new DataSource({
   entities: [User, Order],
   migrations: [CreateUserAndOrderTables1683500000000],
   migrationsTableName: 'migrations',
-  synchronize: false,
+  synchronize: true,
 });

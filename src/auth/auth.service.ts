@@ -284,16 +284,16 @@ export class AuthService {
 
   // Check if a token is blacklisted
   async isTokenBlacklisted(token: string): Promise<boolean> {
-    console.log(
-      `Checking if token is blacklisted: ${token.substring(0, 20)}...`,
-    );
+    // console.log(
+    //   `Checking if token is blacklisted: ${token.substring(0, 20)}...`,
+    // );
 
     try {
       // Check if this token is in the blacklist
       const exists = await this.redis.exists(`blacklist:token:${token}`);
-      console.log(
-        `Blacklist check result: ${exists ? 'Found in blacklist' : 'Not in blacklist'}`,
-      );
+      // console.log(
+      //   `Blacklist check result: ${exists ? 'Found in blacklist' : 'Not in blacklist'}`,
+      // );
 
       return exists === 1;
     } catch (error) {
