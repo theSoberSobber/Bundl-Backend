@@ -183,11 +183,11 @@ export class ChatGateway
           // Send error with debug info
           client.send(JSON.stringify({
             type: 'error',
-            message: 'Not authorized for this order',
+            message: 'This order has either expired or more than 5 minutes have passed since its completion',
             debug: debugInfo
           }));
         } else {
-          this.sendError(client, 'Not authorized for this order');
+          this.sendError(client, 'This order has either expired or more than 5 minutes have passed since its completion');
         }
         return;
       }
@@ -200,11 +200,15 @@ export class ChatGateway
 
       this.logger.log(`✅ User ${userId} joined order room ${orderId}`);
 
+      // Generate anonymous username for this user  
+      const anonymousUsername = this.chatService.generateAnonymousUsername(userId, orderId);
+
       // Prepare join success response
       const joinResponse: any = {
         type: 'join_success',
         orderId: orderId,
         message: `Joined order ${orderId} chat`,
+        username: anonymousUsername, // Send user's anonymous username
       };
 
       // Add debug info if enabled
