@@ -362,12 +362,16 @@ export class OrdersService {
   async handleOrderExpiry(orderId: string): Promise<void> {
     // Use atomic expiry to remove from Redis atomically FIRST
     // This prevents race conditions where users could pledge during expiry
-    const wasRemoved = await this.ordersRedisService.atomicExpireOrder(orderId);
+    const participants = await this.ordersRedisService.atomicExpireOrder(orderId);
     
-    if (!wasRemoved) {
+    // If participants is null/undefined, order didn't exist
+    if (!participants) {
       console.log(`Order ${orderId} was already removed from Redis`);
       return;
     }
+    
+    // participants is now a valid array (could be empty if no participants)
+    console.log(`Order ${orderId} expired with ${participants.length} participants to refund`);
 
     // Get order from database AFTER atomic removal to get final participant data for refunds
     // This ensures we refund all users who were able to pledge before expiry

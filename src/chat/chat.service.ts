@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
 import * as crypto from 'crypto';
+import { APP_CONSTANTS } from '../constants/app.constants';
 
 export interface ChatMessage {
   messageId: string;
@@ -37,8 +38,8 @@ export class ChatService {
     message: string,
   ): Promise<string> {
     const timestamp = Date.now();
-    const chatStreamKey = `chat:${orderId}`;
-    const participantsKey = `order:${orderId}:participants`;
+    const chatStreamKey = `${APP_CONSTANTS.REDIS_KEYS.CHAT_STREAM_PREFIX}${orderId}`;
+    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`;
 
     try {
       // Store message in Redis stream
@@ -53,16 +54,10 @@ export class ChatService {
 
       this.logger.log(`💾 Stored message ${messageId} in ${chatStreamKey}`);
 
-      // Set TTL to match participants set TTL
-      const participantsTTL = await this.redis.ttl(participantsKey);
-      if (participantsTTL > 0) {
-        await this.redis.expire(chatStreamKey, participantsTTL);
-        this.logger.log(`⏰ Set chat stream TTL to ${participantsTTL}s`);
-      } else {
-        // Default TTL if participants set doesn't exist (shouldn't happen)
-        await this.redis.expire(chatStreamKey, 900); // 15 minutes
-        this.logger.warn(`⚠️ Participants set TTL not found, using default 15min TTL`);
-      }
+      // Note: Chat stream has no independent TTL
+      // It's managed by order lifecycle via Lua scripts:
+      // - On completion: 5-minute grace period set by pledgeToOrder script
+      // - On expiry: Immediate deletion by atomicExpireOrder script
 
       return messageId as string;
     } catch (error) {
@@ -88,7 +83,7 @@ export class ChatService {
     oldestMessageId?: string;
     newestMessageId?: string;
   }> {
-    const chatStreamKey = `chat:${orderId}`;
+    const chatStreamKey = `${APP_CONSTANTS.REDIS_KEYS.CHAT_STREAM_PREFIX}${orderId}`;
     const { count = 50, before, after, direction = 'older' } = options;
 
     try {

@@ -75,9 +75,11 @@ export class OrdersRedisService implements OnModuleInit {
 
     // Create participants set and add creator
     // Key format: 'bundl:order:uuid:participants'
+    // Note: No independent TTL - managed by order lifecycle via Lua scripts:
+    // - On completion: 5-minute grace period set by pledgeToOrder script
+    // - On expiry: Immediate deletion by atomicExpireOrder script
     const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${order.id}:participants`;
     await this.redis.sadd(participantsKey, order.creatorId);
-    await this.redis.expire(participantsKey, expirySeconds);
   }
 
   // Get order by ID from Redis
@@ -275,12 +277,6 @@ export class OrdersRedisService implements OnModuleInit {
     return result === 1;
   }
 
-  // Extend participants set TTL (when order completes)
-  async extendParticipantsTTL(orderId: string, additionalSeconds: number): Promise<void> {
-    const participantsKey = `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`;
-    await this.redis.expire(participantsKey, additionalSeconds);
-  }
-
   // Atomic order expiry to prevent race conditions
   // 
   // TRIGGERED BY: Redis keyspace events when 'bundl:order:uuid' key expires
@@ -299,6 +295,13 @@ export class OrdersRedisService implements OnModuleInit {
       local geoKey = KEYS[3]        -- 'bundl:orders:geo'
       local chatKey = KEYS[4]       -- 'bundl:chat:uuid'
       local orderId = ARGV[1]       -- uuid string
+      
+      -- Check if order exists before cleanup
+      local orderExists = redis.call('EXISTS', orderKey)
+      if orderExists == 0 then
+        -- Order doesn't exist, return empty result
+        return {}
+      end
       
       -- Get participants before cleanup
       local participants = redis.call('SMEMBERS', participantsKey)
@@ -332,7 +335,7 @@ export class OrdersRedisService implements OnModuleInit {
       `${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`,        // KEYS[1]: 'bundl:order:uuid'
       `${APP_CONSTANTS.REDIS_KEYS.ORDER_PARTICIPANTS_PREFIX}${orderId}:participants`, // KEYS[2]: 'bundl:order:uuid:participants'
       APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY,                    // KEYS[3]: 'bundl:orders:geo'
-      `chat:${orderId}`,                                           // KEYS[4]: 'bundl:chat:uuid'
+      `${APP_CONSTANTS.REDIS_KEYS.CHAT_STREAM_PREFIX}${orderId}`,     // KEYS[4]: 'bundl:chat:uuid'
       orderId  // ARGV[1]: uuid string for constructing 'order:uuid' geo member
     )) as string[];
     
