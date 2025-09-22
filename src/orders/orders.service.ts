@@ -289,8 +289,8 @@ export class OrdersService {
         throw new NotFoundException('Order not found');
       }
 
-      // Don't re-add completed orders to Redis
-      if (order.status !== OrderStatus.COMPLETED) {
+      // Don't re-add completed or expired orders to Redis
+      if (order.status === OrderStatus.ACTIVE) {
         // Re-add to Redis with original expiry
         await this.ordersRedisService.storeOrder(order);
       }
