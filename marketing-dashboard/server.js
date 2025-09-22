@@ -2,6 +2,25 @@ require('dotenv').config({ path: '../.env' });
 const express = require('express');
 const path = require('path');
 const admin = require('firebase-admin');
+const { Pool } = require('pg');
+
+// Database connection
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+});
+
+// Test database connection
+pool.on('connect', () => {
+  console.log('📊 Connected to PostgreSQL database');
+});
+
+pool.on('error', (err) => {
+  console.error('🚨 Database connection error:', err);
+});
 
 // Import geohash utilities (simplified version for this standalone server)
 class GeohashUtils {
@@ -187,28 +206,67 @@ app.post('/send-notification', async (req, res) => {
     }
 
     if (targetType === 'all') {
-      // Send to all users topic
-      const message_payload = {
-        topic: 'all_users',
-        notification: { title, body: message },
-        data: {
-          type: 'marketing',
-          timestamp: new Date().toISOString(),
-        },
-        android: { priority: 'high' }
-      };
+      // Get all users' FCM tokens from database and send individual notifications
+      try {
+        const result = await pool.query('SELECT "fcmToken" FROM "user" WHERE "fcmToken" IS NOT NULL AND "fcmToken" != \'\'');
+        const fcmTokens = result.rows.map(row => row.fcmToken);
+        
+        console.log(`📱 Found ${fcmTokens.length} FCM tokens for all users notification`);
+        
+        if (fcmTokens.length === 0) {
+          return res.json({
+            success: true,
+            message: 'No users with FCM tokens found',
+            totalUsers: 0,
+            successful: 0,
+            failed: 0
+          });
+        }
 
-      const response = await admin.messaging().send(message_payload);
-      console.log(`✅ Sent to all users:`, response);
+        // Send individual notifications to all users
+        const results = await Promise.all(
+          fcmTokens.map(async (token) => {
+            try {
+              const message_payload = {
+                token,
+                notification: { title, body: message },
+                data: {
+                  type: 'marketing',
+                  timestamp: new Date().toISOString(),
+                },
+                android: { priority: 'high' }
+              };
 
-      res.json({
-        success: true,
-        message: 'Notification sent to all users',
-        messageId: response,
-        totalTopics: 1,
-        successful: 1,
-        failed: 0
-      });
+              const response = await admin.messaging().send(message_payload);
+              return { token: token.substring(0, 10) + '...', success: true, messageId: response };
+            } catch (error) {
+              console.error(`Failed to send to token ${token.substring(0, 10)}...:`, error.message);
+              return { token: token.substring(0, 10) + '...', success: false, error: error.message };
+            }
+          })
+        );
+
+        const successful = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+
+        console.log(`✅ All users notification sent: ${successful}/${fcmTokens.length} successful`);
+
+        res.json({
+          success: true,
+          message: `Notification sent to ${successful} users`,
+          totalUsers: fcmTokens.length,
+          successful,
+          failed,
+          details: results
+        });
+
+      } catch (error) {
+        console.error('🚨 Database error fetching FCM tokens:', error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to fetch user tokens: ' + error.message 
+        });
+      }
 
     } else if (targetType === 'location') {
       // Calculate geohashes for location
