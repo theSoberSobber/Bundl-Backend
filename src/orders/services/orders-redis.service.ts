@@ -296,14 +296,7 @@ export class OrdersRedisService implements OnModuleInit {
       local chatKey = KEYS[4]       -- 'bundl:chat:uuid'
       local orderId = ARGV[1]       -- uuid string
       
-      -- Check if order exists before cleanup
-      local orderExists = redis.call('EXISTS', orderKey)
-      if orderExists == 0 then
-        -- Order doesn't exist, return empty result
-        return {}
-      end
-      
-      -- Get participants before cleanup
+      -- Get participants before cleanup (order key already expired, but participants may still exist)
       local participants = redis.call('SMEMBERS', participantsKey)
       
       -- CRITICAL: Construct the correct geo set key format
@@ -324,7 +317,7 @@ export class OrdersRedisService implements OnModuleInit {
     console.log("Expiry got triggered!!!!!!!!!!!!");
 
     // Debug log showing exact key formats being used
-    console.log(`Trying to delete order key: bundl:${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`);
+    console.log(`Trying to do proper expiry for key: bundl:${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`);
     console.log(`Trying to delete geo member: ${APP_CONSTANTS.REDIS_KEYS.ORDER_PREFIX}${orderId}`);
     console.log(`From geo set: bundl:${APP_CONSTANTS.REDIS_KEYS.ORDERS_GEO_KEY}`);
 
