@@ -167,11 +167,14 @@ export class OrdersRedisService implements OnModuleInit {
       local pledgeAmount = tonumber(ARGV[2])
       local orderId = ARGV[3]
       
-      -- Check if order exists
+      -- Check if order exists and get current TTL
       local serializedOrder = redis.call('GET', key)
       if not serializedOrder then
         return {false, 'Order not found', nil}
       end
+      
+      -- Get current TTL to preserve it
+      local currentTTL = redis.call('TTL', key)
       
       -- Parse order
       local order = cjson.decode(serializedOrder)
@@ -214,9 +217,14 @@ export class OrdersRedisService implements OnModuleInit {
         order.status = 'COMPLETED'
       end
       
-      -- Save updated order
+      -- Save updated order with preserved TTL
       local updatedOrder = cjson.encode(order)
       redis.call('SET', key, updatedOrder)
+      
+      -- Restore TTL if it existed (TTL > 0 means key had expiry)
+      if currentTTL > 0 then
+        redis.call('EXPIRE', key, currentTTL)
+      end
       
       -- If completed, remove from geo index, delete order but keep participants for 5min grace period
       if order.status == 'COMPLETED' then
