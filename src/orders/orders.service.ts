@@ -396,16 +396,8 @@ export class OrdersService {
     order.status = OrderStatus.EXPIRED;
     await this.orderRepository.save(order);
 
-    // Refund credit to creator
-    await this.creditsService.addCredits(
-      order.creatorId,
-      APP_CONSTANTS.CREDIT_COST_PER_ACTION,
-    );
-
-    // Refund credits to all other pledgers
-    const pledgerIds = Object.keys(order.pledgeMap).filter(
-      (id) => id !== order.creatorId,
-    );
+    // Refund credits to all pledgers (including creator)
+    const pledgerIds = Object.keys(order.pledgeMap);
     for (const pledgerId of pledgerIds) {
       try {
         await this.creditsService.addCredits(
