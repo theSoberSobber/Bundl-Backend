@@ -66,21 +66,30 @@ export class OrdersService {
       // Save order to database
       const savedOrder = await this.orderRepository.save(order);
 
-      // If initial pledge was specified, add it
-      if (createOrderDto.initialPledge && createOrderDto.initialPledge > 0) {
-        savedOrder.pledgeMap = { [userId]: createOrderDto.initialPledge };
-        savedOrder.totalPledge = createOrderDto.initialPledge;
-        savedOrder.totalUsers = 1;
-
-        // Update in database
-        await this.orderRepository.save(savedOrder);
-      }
-
       // Add to Redis with expiry
       const expirySeconds =
         createOrderDto.expirySeconds ||
         APP_CONSTANTS.DEFAULT_ORDER_EXPIRY_SECONDS;
       await this.ordersRedisService.storeOrder(savedOrder, expirySeconds);
+
+      // If initial pledge was specified, use the existing pledge logic
+      if (createOrderDto.initialPledge && createOrderDto.initialPledge > 0) {
+        const pledgeResult = await this.ordersRedisService.pledgeToOrder(
+          savedOrder.id,
+          userId,
+          createOrderDto.initialPledge,
+        );
+
+        if (pledgeResult.success && pledgeResult.updatedOrder) {
+          // Update database with the pledged order data
+          await this.orderRepository.save(pledgeResult.updatedOrder);
+        } else {
+          this.logger.error(
+            `Failed to add initial pledge to order ${savedOrder.id}: ${pledgeResult.message}`,
+          );
+          throw new Error(pledgeResult.message);
+        }
+      }
 
       // Send geohash-based notifications to nearby users
       try {

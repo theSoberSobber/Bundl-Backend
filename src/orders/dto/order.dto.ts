@@ -60,7 +60,7 @@ export class CreateOrderDto {
     required: false,
   })
   @IsNumber()
-  @Min(60)
+  @Min(5)  // Temporarily lowered for testing
   @Type(() => Number)
   @IsOptional()
   expirySeconds?: number;

@@ -20,9 +20,9 @@ class Colors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
 
-# Test phone numbers (only needed for display, not actually used in debug mode)
-TEST_PHONE_1 = '+919876543215'  # User who creates the order
-TEST_PHONE_2 = '+919876543216'  # User who pledges to the order
+# Generate random phone numbers for fresh users with default credits
+TEST_PHONE_1 = f'+91{random.randint(9000000000, 9999999999)}'  # User who creates the order
+TEST_PHONE_2 = f'+91{random.randint(9000000000, 9999999999)}'  # User who pledges to the order
 
 def print_response(response, label):
     """Print formatted API response"""
@@ -40,6 +40,21 @@ def print_response(response, label):
             print(response.text)
             return None
     return None
+
+def check_credit_balance(access_token, user_id):
+    """Check user's credit balance"""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    try:
+        response = requests.get(f"{BASE_URL}/credits/balance", headers=headers)
+        data = print_response(response, f"Credit Balance for {user_id}")
+        
+        if response.status_code == 200 and data:
+            return data.get('credits', 0)
+        return 0
+    except requests.RequestException as e:
+        print(f"{Colors.FAIL}Network error: {e}{Colors.ENDC}")
+        return 0
 
 def authenticate_user(phone_number):
     """Authenticate user and return access token using debug mode"""
@@ -105,7 +120,7 @@ def create_order(access_token, user_id):
         "latitude": lat,
         "longitude": lng,
         "initialPledge": 50,  # Initial pledge of ₹50
-        "expirySeconds": 600  # 10 minutes
+        "expirySeconds": 5  # 5 seconds for testing
     }
     
     headers = {
@@ -250,68 +265,91 @@ def get_order_status(access_token, order_id, user_id):
         sys.exit(1)
 
 def run_test():
-    """Run the full test flow"""
-    print(f"\n{Colors.BOLD}{Colors.HEADER}===== BUNDL ORDER FUNCTIONALITY TEST ====={Colors.ENDC}")
+    """Run the order expiry test flow"""
+    print(f"\n{Colors.BOLD}{Colors.HEADER}===== BUNDL ORDER EXPIRY TEST ====={Colors.ENDC}")
     print(f"{Colors.BLUE}Testing against API at:{Colors.ENDC} {BASE_URL}")
-    print(f"{Colors.BLUE}Debug mode should be enabled in .env with DEBUG_ENABLED=true{Colors.ENDC}")
+    print(f"{Colors.BLUE}Order expiry time: 5 seconds{Colors.ENDC}")
     
     # Step 1: Authenticate first user (order creator)
     print(f"\n{Colors.BOLD}{Colors.HEADER}Step 1: Authenticate Order Creator{Colors.ENDC}")
     creator_token, _, creator_id = authenticate_user(TEST_PHONE_1)
     
-    # Step 2: Create an order
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 2: Create New Order{Colors.ENDC}")
-    order = create_order(creator_token, creator_id)
-    order_id = order['id']
-    lat = order['latitude']
-    lng = order['longitude']
+    # Check initial credits
+    print(f"\n{Colors.BOLD}Checking initial credit balance{Colors.ENDC}")
+    initial_credits = check_credit_balance(creator_token, creator_id)
+    print(f"{Colors.BLUE}Creator initial credits:{Colors.ENDC} {initial_credits}")
     
-    # Step 3: Check active orders
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 3: Verify Order in Active Orders List{Colors.ENDC}")
-    active_orders = get_active_orders(creator_token, lat, lng)
-    
-    # Step 4: Get order status
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 4: Check Initial Order Status{Colors.ENDC}")
-    order_status = get_order_status(creator_token, order_id, creator_id)
-    
-    # Step 5: Authenticate second user (pledger)
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 5: Authenticate Pledger{Colors.ENDC}")
+    # Step 2: Authenticate second user (pledger)
+    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 2: Authenticate Pledger{Colors.ENDC}")
     pledger_token, _, pledger_id = authenticate_user(TEST_PHONE_2)
     
-    # Step 6: Pledge to the order
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 6: Make First Pledge{Colors.ENDC}")
-    pledge_result = pledge_to_order(pledger_token, order_id, pledger_id)
+    # Check pledger initial credits
+    pledger_initial_credits = check_credit_balance(pledger_token, pledger_id)
+    print(f"{Colors.BLUE}Pledger initial credits:{Colors.ENDC} {pledger_initial_credits}")
     
-    # Step 7: Check updated order status
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 7: Check Updated Order Status{Colors.ENDC}")
-    updated_status = get_order_status(creator_token, order_id, creator_id)
+    # Step 3: Create an order
+    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 3: Create New Order (5 second expiry){Colors.ENDC}")
+    order = create_order(creator_token, creator_id)
+    order_id = order['id']
     
-    # Step 8: Make final pledge to complete the order
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 8: Complete Order with Final Pledge{Colors.ENDC}")
-    remaining_amount = order['amountNeeded'] - updated_status['totalPledge']
-    if remaining_amount > 0:
-        print(f"{Colors.BLUE}Remaining amount needed:{Colors.ENDC} ₹{remaining_amount}")
-        final_pledge = pledge_to_order(creator_token, order_id, creator_id, remaining_amount)
+    # Check credits after order creation
+    creator_credits_after_create = check_credit_balance(creator_token, creator_id)
+    print(f"{Colors.BLUE}Creator credits after order creation:{Colors.ENDC} {creator_credits_after_create}")
+    print(f"{Colors.WARNING}Credits deducted for order creation:{Colors.ENDC} {initial_credits - creator_credits_after_create}")
+    
+    # Step 4: Make a pledge quickly
+    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 4: Make Quick Pledge Before Expiry{Colors.ENDC}")
+    pledge_result = pledge_to_order(pledger_token, order_id, pledger_id, 50)
+    
+    # Check pledger credits after pledge
+    pledger_credits_after_pledge = check_credit_balance(pledger_token, pledger_id)
+    print(f"{Colors.BLUE}Pledger credits after pledge:{Colors.ENDC} {pledger_credits_after_pledge}")
+    print(f"{Colors.WARNING}Credits deducted for pledge:{Colors.ENDC} {pledger_initial_credits - pledger_credits_after_pledge}")
+    
+    # Step 5: Wait for expiry and monitor
+    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 5: Wait for Order Expiry (5 seconds){Colors.ENDC}")
+    print(f"{Colors.BLUE}Waiting for order to expire...{Colors.ENDC}")
+    
+    time.sleep(7)  # Wait a bit longer than expiry time
+    
+    # Step 6: Check credits after expiry
+    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 6: Check Credits After Expiry{Colors.ENDC}")
+    
+    creator_credits_final = check_credit_balance(creator_token, creator_id)
+    pledger_credits_final = check_credit_balance(pledger_token, pledger_id)
+    
+    print(f"{Colors.BLUE}Creator credits after expiry:{Colors.ENDC} {creator_credits_final}")
+    print(f"{Colors.BLUE}Pledger credits after expiry:{Colors.ENDC} {pledger_credits_final}")
+    
+    # Calculate refunds
+    creator_refund = creator_credits_final - creator_credits_after_create
+    pledger_refund = pledger_credits_final - pledger_credits_after_pledge
+    
+    print(f"\n{Colors.BOLD}{Colors.HEADER}===== CREDIT REFUND ANALYSIS ====={Colors.ENDC}")
+    print(f"{Colors.BLUE}Creator refund:{Colors.ENDC} {creator_refund} credits")
+    print(f"{Colors.BLUE}Pledger refund:{Colors.ENDC} {pledger_refund} credits")
+    
+    # Expected: Each user should get back exactly 1 credit
+    print(f"\n{Colors.BOLD}Expected refunds:{Colors.ENDC} 1 credit each")
+    
+    if creator_refund == 1:
+        print(f"{Colors.GREEN}✓ Creator refund correct: {creator_refund} credit{Colors.ENDC}")
     else:
-        print(f"{Colors.GREEN}Order already complete! No additional pledge needed.{Colors.ENDC}")
+        print(f"{Colors.FAIL}✗ Creator refund WRONG: {creator_refund} credits (expected 1){Colors.ENDC}")
     
-    # Step 9: Check final order status
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Step 9: Verify Final Order Status{Colors.ENDC}")
-    final_status = get_order_status(creator_token, order_id, creator_id)
+    if pledger_refund == 1:
+        print(f"{Colors.GREEN}✓ Pledger refund correct: {pledger_refund} credit{Colors.ENDC}")
+    else:
+        print(f"{Colors.FAIL}✗ Pledger refund WRONG: {pledger_refund} credits (expected 1){Colors.ENDC}")
     
     # Summary
-    print(f"\n{Colors.BOLD}{Colors.GREEN}===== ORDER TEST SUMMARY ====={Colors.ENDC}")
-    print(f"{Colors.BLUE}Order ID:{Colors.ENDC} {order_id}")
-    print(f"{Colors.BLUE}Final Status:{Colors.ENDC} {final_status['status']}")
-    print(f"{Colors.BLUE}Total Pledged:{Colors.ENDC} ₹{final_status['totalPledge']} / ₹{final_status['amountNeeded']}")
-    print(f"{Colors.BLUE}Total Users:{Colors.ENDC} {final_status['totalUsers']}")
-    print(f"{Colors.BLUE}Pledgers:{Colors.ENDC} {', '.join(list(final_status.get('pledgeMap', {}).keys()))}")
-    
-    if final_status['status'] == 'COMPLETED':
-        print(f"\n{Colors.BOLD}{Colors.GREEN}✓ Test Completed Successfully: Order was completed!{Colors.ENDC}")
+    print(f"\n{Colors.BOLD}{Colors.HEADER}===== TEST SUMMARY ====={Colors.ENDC}")
+    if creator_refund == 1 and pledger_refund == 1:
+        print(f"{Colors.GREEN}✓ PASS: Credit refunds are correct{Colors.ENDC}")
     else:
-        print(f"\n{Colors.BOLD}{Colors.WARNING}⚠ Test Completed: Order is still in {final_status['status']} state{Colors.ENDC}")
-
+        print(f"{Colors.FAIL}✗ FAIL: Credit refund bug detected!{Colors.ENDC}")
+        print(f"{Colors.WARNING}Creator got {creator_refund} credits instead of 1{Colors.ENDC}")
+        print(f"{Colors.WARNING}Pledger got {pledger_refund} credits instead of 1{Colors.ENDC}")
 if __name__ == "__main__":
     try:
         run_test()
